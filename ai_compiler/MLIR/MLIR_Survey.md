@@ -10,7 +10,7 @@ MLIR 全称是 Multi-Level Intermediate Representation (多级中间表示)，�
 
 IR即 Intermediate Representation，可以看作是一种数据格式，作为从端到端转换中的中间表示。例如深度学习模型一般表示为**计算图**，能够表示计算图的数据结果就可以称为一种IR，例如`ONNX`、`TorchScript`、`TVM Relay`等等。
 
-<img src="./img_简介/image-111.png" width=60%>
+<img src="./img_MLIR_Survey/image-111.png" width=60%>
 
 -   ONNX(Open Neural Network Exchange) : ONNX 协议首先由微软和Meta提出，它定义了一组和环境、平台均无关的标准格式（如算子功能）。在训练完成后可以将支持框架(Pytorch、Tensorflow等)的模型转化为 ONNX 文件进行存储，ONNX 文件不仅存储了神经网络模型的权重，也存储了模型的结构信息以及网络中每一层的输入输出等信息。
 -   TorchScrpit : PyTorch 最大的卖点是它对动态网络的支持，比其他需要构建静态网络的框架拥有更低的学习成本。但动态图模式在每次执行计算时都要重新构造计算图，非固定的网络结构给网络结构分析并进行优化带来了困难。TorchScript 就是为了解决这个问题而诞生的工具，包括代码的追踪及解析、中间表示的生成、模型优化、序列化等各种功能。
@@ -18,7 +18,7 @@ IR即 Intermediate Representation，可以看作是一种数据格式，作为�
 
 ### 1.2 常见的IR表示系统
 
-![image-121](./img_简介/image-121.png)
+![image-121](./img_MLIR_Survey/image-121.png)
 
 在上图表示中：
 
@@ -40,7 +40,7 @@ Tensorflow 团队较早时采用了多种IR的部署，这样导致**软件碎�
 
 因此 Tensorflow 团队就提出了 MLIR，主要是为了**统一各类IR格式，协调各类IR的转换，带来更高的优化效率**。
 
-![image-131](./img_简介/image-131.png)
+![image-131](./img_MLIR_Survey/image-131.png)
 
 
 
@@ -62,7 +62,7 @@ Tensorflow 团队较早时采用了多种IR的部署，这样导致**软件碎�
 
 因此 MLIR 提出了`Dialect`，各种IR可以转换为对应的 `mlir Dialect`，不仅方便了转换，而且还能随意扩展。不妨将dialect看成各种具有IR表达能力的黑盒子，之后的编译流程就是在各种dialect之间转化。
 
-![image-211](./img_简介/image-211.png)
+![image-211](./img_MLIR_Survey/image-211.png)
 
 2.   **dialect 是怎么工作的？** 
 
@@ -72,13 +72,13 @@ dialect 将所有的IR放在了同一个命名空间中，分别对每个IR定�
 
 整个的编译过程：从源语言生成 AST（Abstract Syntax Tree，抽象语法树），借助 dialect 遍历 AST，产生 MLIR 表达式（此处可为多层IR通过 Lowering Pass 依次进行分析），最后经过 MLIR 分析器，生成目标硬件程序。
 
-![image-212](./img_简介/image-212.png)
+![image-212](./img_MLIR_Survey/image-212.png)
 
 3.   **dialect 内部构成**
 
 dialect主要是由自定义的 `Type`、`Attribute`、`Interface` 以及 `operation` 构成。operation 细分为Attribute、Type、Constraint、Interface、Trait（属性、类型、限制、接口、特征）。同时存在 ODS 和 DRR 两个重要的模块，这两个模块都是基于 tableGen 模块，**ODS 模块用于定义 operation ，DRR 模块用于实现两个 dialect 之间的 conversion**。
 
-![image-213](./img_简介/image-213.png)
+![image-213](./img_MLIR_Survey/image-213.png)
 
 ### 2.2 Operation
 
@@ -111,7 +111,7 @@ dialect主要是由自定义的 `Type`、`Attribute`、`Interface` 以及 `opera
 
 更一般的格式可见下图：
 
-![image-221](./img_简介/image-221.png)
+![image-221](./img_MLIR_Survey/image-221.png)
 
 ### 2.3 创建新的dialect(添加新的operation)
 
@@ -184,7 +184,7 @@ ${build_root}/bin/mlir-tblgen -gen-dialect-decls ${mlir_src_root}/examples/toy/C
 
 下图中右侧是 ODS 中的定义，左侧是自动生成的 C++ 代码。
 
-![image-231](./img_简介/image-231.png)
+![image-231](./img_MLIR_Survey/image-231.png)
 
 2.   定义好 Dialect 之后，需要将其加载到 `MLIRContext` 中。默认情况下，MLIRContext 只加载内置的 Dialect，若要添加自定义的 Dialect，需要加载到 MLIRContext。
 
@@ -336,7 +336,7 @@ ${build_root}/bin/mlir-tblgen -gen-op-defs ${mlir_src_root}/examples/toy/Ch2/inc
 
 下图中右侧是 ODS 中的定义，左侧是自动生成的 C++ 代码。
 
-![image-232](./img_简介/image-232.png)
+![image-232](./img_MLIR_Survey/image-232.png)
 
 
 >    官方的文档在这时候没提及需要在 Toy Dialect 的 initialize 函数中注册生成的Op
@@ -386,7 +386,7 @@ def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
 
 使用 `mlir-tblgen -gen-op-defs` 命令生成对应的 `Ops.h.inc` 文件。
 
-![image-251](./img_简介/image-251.png)
+![image-251](./img_MLIR_Survey/image-251.png)
 
 使用 #include 直接引用生成文件
 
@@ -445,7 +445,7 @@ Module:
 
 ### 3.2 生成(未优化)MLIR表达式
 
-![image-321](./img_简介/image-321.png)
+![image-321](./img_MLIR_Survey/image-321.png)
 
 1.   MLIRGen 模块会遍历 AST ，递归调用子函数，构建 `operation`。operation 是 dialect 中重要的组成元素，用来表示 dialect 中的某个操作，一个 dialect 中可以有很多的 operation。
 
@@ -517,7 +517,7 @@ module{
 
 其二，使用基于规则的模式匹配和重写的**声明式重写规则（DRR）**进行，但该方法要求使用 [ODS](https://mlir.llvm.org/docs/Interfaces/#attributeoperationtype-interfaces)定义操作。
 
-![image-331](./img_简介/image-331.png)
+![image-331](./img_MLIR_Survey/image-331.png)
 
 ### 4.1 手动编写代码进行表达式的匹配与重写
 
@@ -713,7 +713,7 @@ module {
 
 -   为了代码生成阶段更方便，需要进行**形状推断**，确定所有 tensor 的 shape
 
-![image-431](./img_简介/image-431.png)
+![image-431](./img_MLIR_Survey/image-431.png)
 
 下面以消除冗余 reshape 操作后的 MLIR 表达式为例
 
@@ -1038,11 +1038,11 @@ lowering 主要是为了更贴近硬件做代码生成和做硬件相关的优�
 
 ### 5.1 从 MLIR 表达式进行部分 Lowering
 
-![image-513](./img_简介/image-513.png)
+![image-513](./img_MLIR_Survey/image-513.png)
 
 MLIR 中有许多不同的 Dialect，lowering 过程其实就是**在各种 Dialect 之间转化**，而 MLIR 提供了一套统一的 `DialectConversion` 框架来实现不同 Dialect 之间的转化。
 
-![image-213](./img_简介/image-213.png)
+![image-213](./img_MLIR_Survey/image-213.png)
 
 > 1.   要使用 DialectConversion 框架需要 Three Components
 >
@@ -1089,7 +1089,7 @@ MLIR 中有许多不同的 Dialect，lowering 过程其实就是**在各种 Dial
 
 本节标题的部分lowering 意味着：从一个高抽象级别的 Dialect 到一个低抽象级别的 Dialect 过程中，可以**只 lowering 其中一部分 operation**，剩下的 operation 只需要升级与其他 operation 共存。现在以对 transformation 后的 MLIR 表达式进行 lowering为例：
 
-![image-511](./img_简介/image-511.png)
+![image-511](./img_MLIR_Survey/image-511.png)
 
 ```cpp
 // toy 源码
@@ -1119,7 +1119,7 @@ toy.func @main() {
 
 为了实现进一步优化，将 Toy Dialect 中计算密集操作转换为 Affine Dialect 和 Standard Dialect（这两个都是 mlir 内置的 Dialect）的组合，但由于 Affine Dialect 中没有 print operation，就需要将 Toy Dialect 中的 print operation 保留并重写。
 
-![image-512](./img_简介/image-512.png)
+![image-512](./img_MLIR_Survey/image-512.png)
 
 ```cpp
 // 位于 ../mlir/examples/toy/Ch5/mlir/LowerToAffineLoops.cpp
@@ -1358,11 +1358,11 @@ func.func @main() {
 
 ### 5.2 混合 Dialect 表达式 Lowering 到 LLVM IR
 
-![image-521](./img_简介/image-521.png)
+![image-521](./img_MLIR_Survey/image-521.png)
 
 5.1节中已经将 Toy Dialect 转换为 **Affine Dialect、Standard Dialect以及包含 Toy Dialect 中的 print operation 的混合操作**，需要全部 lowering 到 [LLVM Dialect](https://mlir.llvm.org/docs/Dialects/LLVM/)，再 lowering 到 LLVM IR 接入到 LLVM 后端进行 CodeGen。（LLVM Dialcet属于MLIR的Dialect，LLVM IR是LLVM自己的IR）
 
-![image-522](./img_简介/image-522.png)
+![image-522](./img_MLIR_Survey/image-522.png)
 
 1. 第一步：lower `toy.print` 
 
@@ -1405,7 +1405,7 @@ target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
 
 接下里的 lower 过程还需将当前所使用的 MemRef 类型转换为 LLVM 中的表示形式，MLIR 中已经定义好很多 typeConverter 用于复用。
 
-![image-523](./img_简介/image-523.png)
+![image-523](./img_MLIR_Survey/image-523.png)
 
 ```cpp
 // 位于 ../mlir/examples/toy/Ch6/mlir/LowerToLLVM.cpp
@@ -1471,7 +1471,7 @@ llvm.func @malloc(!llvm.i64) -> !llvm<"i8*"> llvm.func @main(){
 
 现在已经转换到 LLVM Dialect，最终需要lower到 LLVM IR，使用 MLIR 内置的转换函数`translateModuleToLLVMIR`即可。然后利用 LLVM tool chain 即可完成多后端 CodeGen。
 
-![image-524](./img_简介/image-524.png)
+![image-524](./img_MLIR_Survey/image-524.png)
 
 ```cpp
 // 生成的LLVM IR表达式
@@ -1488,7 +1488,7 @@ define void @main() local_unnamed_addr #1{
 
 至此，本文就结束了，本文介绍的 Toy 接入 MLIR 流程本质上还是高级语言的转换流程，但目前 MLIR 在人工智能领域应用较热，二者的转换前端区别较大，一个是抽象语法树(AST)，一个是计算图IR(Computation Graph IR)。下图是以 Tensorflow 为例的转换流程。具体的流程为可参考 [Codegen Dialect Overview - MLIR - LLVM Discussion Forums](https://discourse.llvm.org/t/codegen-dialect-overview/2723)
 
-![image-611](./img_简介/image-611.png)
+![image-611](./img_MLIR_Survey/image-611.png)
 
 
 

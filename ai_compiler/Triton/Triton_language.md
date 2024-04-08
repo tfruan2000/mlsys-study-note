@@ -79,7 +79,7 @@ a.stride() # (6, 1)
 
 triton是SIMD编程范式，一次处理一片数据（基于block算法的编程范式）
 
-![截屏2024-04-04 16.36.58.png](./img_triton language/%25E6%2588%25AA%25E5%25B1%258F2024-04-04_16.36.58.png)
+![截屏2024-04-04 16.36.58.png](./img_triton_language/%25E6%2588%25AA%25E5%25B1%258F2024-04-04_16.36.58.png)
 
 ## 显式地load和store
 
@@ -133,7 +133,7 @@ task_id（mlu）
 
 这种group-order的行为能获得更好的data-reuse
 
-![Untitled](./img_triton language/Untitled.png)
+![Untitled](./img_triton_language/Untitled.png)
 
 - num_pid_m 和 num_pid_n 就是为来获得矩阵长宽各可以分为多少个block（上图的黄色小块）
 
@@ -262,7 +262,7 @@ Layout：定义了Data是如何被Thread处理
 
 Distributed encodings have a layout function that is entirely characterized by a d-dimensional tensor L. Note that L doesn't need to have the same shape (or even the same rank) as the tensor it is encoding.
 
-![截屏2024-04-08 00.05.30.png](./img_triton language/%25E6%2588%25AA%25E5%25B1%258F2024-04-08_00.05.30.png)
+![截屏2024-04-08 00.05.30.png](./img_triton_language/%25E6%2588%25AA%25E5%25B1%258F2024-04-08_00.05.30.png)
 
 ### block layout
 
@@ -270,7 +270,7 @@ An encoding where each warp owns a contiguous portion of the target tensor. This
 
 `#blocked0 = #triton_gpu.blocked<{sizePerThread = [1, 8], threadsPerWarp = [8, 4], warpsPerCTA = [8, 1], order = [1, 0]}>`
 
-### <img src="./img_triton language/Untitled%201.png" alt="Untitled" style="zoom:67%;" />
+### <img src="./img_triton_language/Untitled%201.png" alt="Untitled" style="zoom:67%;" />
 
 - **sizePerThread = [1, 8]：每个线程处理数据Size**
 - **threadsPerWarp = [8, 4]： warp内线程的布局**
@@ -292,6 +292,6 @@ In order to **avoid shared memory bank conflicts**, elements may be **swizzled
 
 同一个warp内的thread同时访问同一列的数据
 
-![Untitled](./img_triton language/Untitled%202.png)
+![Untitled](./img_triton_language/Untitled%202.png)
 
 [http://www.giantpandacv.com/project/OneFlow/【BBuf的CUDA笔记】十三，OpenAI Triton 入门笔记一/](http://www.giantpandacv.com/project/OneFlow/%E3%80%90BBuf%E7%9A%84CUDA%E7%AC%94%E8%AE%B0%E3%80%91%E5%8D%81%E4%B8%89%EF%BC%8COpenAI%20Triton%20%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0%E4%B8%80/)

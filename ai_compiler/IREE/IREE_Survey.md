@@ -12,9 +12,9 @@
 
 讲解下图： https://drive.google.com/drive/u/0/folders/1sRAsgsd8Bvpm_IxREmZf2agsGU2KvrK-
 
-![截屏2023-02-28 09.31.47](./img_IREE简介/截屏2023-02-28 09.31.47.png)
+![截屏2023-02-28 09.31.47](./img_IREE_Survey/截屏2023-02-28 09.31.47.png)
 
-![截屏2023-02-28 09.31.38](./img_IREE简介/截屏2023-02-28 09.31.38.png)
+![截屏2023-02-28 09.31.38](./img_IREE_Survey/截屏2023-02-28 09.31.38.png)
 
 主要特征：
 
@@ -33,7 +33,7 @@ IREE对ML模型编译采用整体方法(holistic approach)：生成的IR既包�
 >
 > 执行逻辑：将硬件上的密集计算编码为特定于硬件/API 的二进制文件，如[SPIR-V](https://www.khronos.org/spir/)。
 
-<img src="./img_IREE简介/截屏2022-12-07 21.42.13.png" alt="截屏2022-12-07 21.42.13" style="zoom: 50%;" />
+<img src="./img_IREE_Survey/截屏2022-12-07 21.42.13.png" alt="截屏2022-12-07 21.42.13" style="zoom: 50%;" />
 
 a) **导入您的模型**
 
@@ -55,13 +55,13 @@ d) **运行你的模型**
 
 - **IREE Compiler (LLVM Target)**
 
-<img src="./img_IREE简介/v2-5b69d56e33512deeb65eda364c343859_1440w.webp" alt="v2-5b69d56e33512deeb65eda364c343859_1440w" style="zoom:67%;" />
+<img src="./img_IREE_Survey/v2-5b69d56e33512deeb65eda364c343859_1440w.webp" alt="v2-5b69d56e33512deeb65eda364c343859_1440w" style="zoom:67%;" />
 
 大多数转换都发生在 Linalg Dialect 中，在 tensor 或者 buffer 级别，以及 bufferization 过程(tensor向buffer转换)。执行文件的首选路径是**lower到 Vector Dialect**，在这里可以进行额外的转换。当从 Linalg Dialect 往下 lowering 时，SCF 可用于围绕向量操作的控制流(control flow around vector operations)，但对这些操作不执行任何转换。去生成 SCF Dialect 本质上意味着不再进行进一步的结构优化。Vector Dialect 可以逐步 lower 到复杂度较低的抽象，直到最终生成 LLVM Dialect。
 
 - **IREE Compiler (SPIR-V Target)**
 
-<img src="./img_IREE简介/v2-8ce71a71e5c5e83da438c1d5793f76d9_r.jpg" alt="v2-8ce71a71e5c5e83da438c1d5793f76d9_r" style="zoom:67%;" />
+<img src="./img_IREE_Survey/v2-8ce71a71e5c5e83da438c1d5793f76d9_r.jpg" alt="v2-8ce71a71e5c5e83da438c1d5793f76d9_r" style="zoom:67%;" />
 
 [SPIR-V](https://mlir.llvm.org/docs/Dialects/SPIR-V/)(Standard Portable Intermediate Representation, [Khronos group](https://www.khronos.org/spir/) standard.)是IREE编译器的主要目标。顶层流程类似于生成 LLVM IR 的流程，**大多数转换都发生在 Linalg-on-tensor 和 Vector 级别上**。从这里开始，lowering 倾向于直接转到 SPIR-V ，SPIR-V 具有一组跨越多个抽象级别的丰富操作集，操作集中包含：高级操作、结构化控制流和类指令的原语(high-level operations, structured control flow and instruction-like primitives)。该流程通过 GPU Dialect 进行 device-only operations，如工作项标识符提取，并依赖 IREE 的 runtime 来管理 GPU 内核。
 
