@@ -1,0 +1,7 @@
+# Architecture
+
+传统nn网络对硬件的需求：weight以及中间结果，通过存算一体搞一个weight station，再分析数据流以减少层之间的中间结果，就可以靠dsa叠算力将吞吐拉到极大
+
+但是llm推理本质上是多次inference，通过一次input给出多个token，每次inference都将当前获得的token和input拼接再输入来预测下一个token。多次inference的过程是串行的，所以需要保存大量上下文信息。新一轮的inference的某些计算结果都可以复用上一轮的某些结果，这便是kv-cache技术。 但kv-cache对芯片显存的要求可大可小，和请求数、上下文长度相关。
+
+llm专用芯片的瓶颈在于显存容量和带宽，kv-cache是热数据，每次inference生成token都要读一遍，如果kv-cache高达几百GB，那么想实现100token/s那就是几十TB/s的带宽需求。提高并发度一定程度可以加大对权重读取带宽的复用，但是并发度越高，kv-cache容量需求越大，容量又会bound。
