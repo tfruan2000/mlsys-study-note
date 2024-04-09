@@ -60,6 +60,8 @@ ctrl + p 输入 clangd，先点击 下载language server；然后 加 settings.j
 }
 ```
 
+使用compile_commands.json主要是方便索引文件，特别是td生成的 `inc` 文件，但也可以人为从 `llvm-project/build/tools/mlir/include/mlir/xxx/xxx` 中找到编译出的inc
+
 ## Adaptor
 
 只有**operands没有results**的中间态，可以从adaptor中获得很多基础信息
@@ -706,16 +708,18 @@ for (auto &opOperand : op3.getOpOperands()) {
 
 ## Interface
 
-- AttrInterface
-    - ElementsAttrInterface
-        - DenseIntOrFPElements
-        - DenseStringElements
-        - DenseResourceElements
-        - SparseElements
-    - MemRefLayoutAttrInterface
-    - TypeAttrInterface
-- **DestinationStyleOpInterface
-linalOp都包含该interface**
+### AttrInterface
+
+- ElementsAttrInterface
+    - DenseIntOrFPElements
+    - DenseStringElements
+    - DenseResourceElements
+    - SparseElements
+- MemRefLayoutAttrInterface
+- TypeAttrInterface
+
+### DestinationStyleOpInterface
+linalOp都包含该interface
 
 ```cpp
 OpOperandVector getDpsInputOperands()
@@ -734,6 +738,52 @@ OpOperandVector getDpsInitOperands()
         }
         ```
         
+
+ ### DialectInlinerInterface
+
+为自定义的Dialect继承该interface以实现inliner的操作，然后在额外重载一点函数就行，例如 `isLegalToInline`
+
+```cpp
+struct AffineInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+```
+
+在调inline这个pass时，遍历每个op的时候会使用 `getInterfaceFor`函数获得该op所属dialect重载的inline相关interface和函数
+
+```cpp
+bool InlinerInterface::isLegalToInline(Operation *op, Region *dest,
+                                       bool wouldBeCloned,
+                                       IRMapping &valueMapping) const {
+  if (auto *handler = getInterfaceFor(op))
+    return handler->isLegalToInline(op, dest, wouldBeCloned, valueMapping);
+  return false;
+}
+```
+
+
+
+### TilingInterface
+
+对于有该interface的op可以cast成该interface `llvm::cast<TilingInterface>(op)`
+
+- getLoopIteratorTypes：每个元素为utils::IteratorType，表示为utils::IteratorType::parallel或utils::IteratorType::reduction
+
+- getIterationDomain：每个元素是一个Range
+
+```cpp
+if (auto intAttr = range.size.dyn_cast<Attribute>()) {
+	tileSize = std::min(setTileSize, intAttr.cast<IntegerAttr>().getInt());
+}
+```
+
+### MemoryEffectOpInterface
+
+- getEffects
+
+- hasEffect
+- hasNoEffect
+
+
 
 ---
 
@@ -974,7 +1024,6 @@ llvm-project/mlir/include/mlir/Dialect/PDL/IR/PDLTypes
       	"linalg::LinalgDialect",
       	"tensor::TensorDialect",
       ];
-    
   
 - passName.cpp中定义pass的实现
   xxxx/xxx/Transforms/PassName.cpp
@@ -1327,15 +1376,15 @@ llvm-project/mlir/lib/Dialect/Linalg/Transforms/Tiling.cpp
 
 对于有该interface的op可以cast成该interface `llvm::cast<TilingInterface>(op)`
 
-- getLoopIteratorTypes：每个元素为utils::IteratorType，表示为utils::IteratorType::parallel或utils::IteratorType::reduction
-- getIterationDomain：每个元素是一个Range
-  
-    ```cpp
-    if (auto intAttr = range.size.dyn_cast<Attribute>()) {
-    	tileSize = std::min(setTileSize, intAttr.cast<IntegerAttr>().getInt());
-    }
-    ```
-    
+​	- getLoopIteratorTypes：每个元素为utils::IteratorType，表示为utils::IteratorType::parallel或utils::IteratorType::reduction
+
+​	- getIterationDomain：每个元素是一个Range
+
+```cpp
+if (auto intAttr = range.size.dyn_cast<Attribute>()) {
+	tileSize = std::min(setTileSize, intAttr.cast<IntegerAttr>().getInt());
+}
+```
 
 ---
 

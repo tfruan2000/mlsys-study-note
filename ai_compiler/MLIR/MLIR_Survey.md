@@ -543,6 +543,7 @@ func @transpose_transpose(%arg0: tensor<*xf64>) -> tensor<*xf64> {
 ```cpp
 // Fold transpose(transpose(x)) -> x
 struct SimplifyRedundantTranspose : public mlir::OpRewritePattern<TransposeOp> {
+  // using OpRewritePattern::OpRewritePattern<TransposeOp>
   // 匹配该IR中的所有 toy.transpose
   /// mlir使用"benefit"对patterns进行排序，并按profitability顺序处理
   SimplifyRedundantTranspose(mlir::MLIRContext *context)
@@ -600,7 +601,7 @@ def TransposeOp : Toy_Op<"transpose", [Pure]> {
 >   下面这段代码位于 toyc.cpp 中，默认位置在 ../mlir/examples/toy/Ch3/toyc.cpp
 
 ```cpp
-if (enableOpt) {// enableOpt 是从命令行输入的编译选项
+if (enableOpt) {// enableOpt 是从命令行输入的编译选项，例如O1, O2
   // 使用 PassManger 模块添加优化一道优化工序
   mlir::PassManager pm(module->getName());
   applyPassManagerCLOptions(pm);

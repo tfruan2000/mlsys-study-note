@@ -1,5 +1,21 @@
 # triton language
 
+## cuda vs triton
+
+<div style="text-align: center;"><img src="./img_Triton_language/cuda_vs_triton.png" alt="cuda_vs_triton" style="width: 90%;"></div>
+
+gpu架构图如下
+
+<div style="text-align: center;"><img src="./img_Triton_language/gpu_arch.png" alt="gpu_arch" style="width: 70%;"></div>
+
+## triton compiler
+
+<div style="text-align: center;"><img src="./img_Triton_language/triton_arch_now.png" alt="triton_arch_now" style="width: 90%;"></div>
+
+为了支持多后端
+
+<div style="text-align: center;"><img src="./img_Triton_language/triton_arch.png" alt="triton_arch" style="width: 70%;"></div>
+
 ## 🌰：add
 
 ```python
@@ -79,7 +95,8 @@ a.stride() # (6, 1)
 
 triton是SIMD编程范式，一次处理一片数据（基于block算法的编程范式）
 
-<div style="text-align: center;"><img src="./img_Triton_language/%25E6%2588%25AA%25E5%25B1%258F2024-04-04_16.36.58.png" alt="截屏2024-04-04 16.36.58.png" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="./img_Triton_language/cuda_triton.png" alt="cuda_triton" style="width: 90%;"></div>
+
 
 ## 显式地load和store
 
@@ -123,17 +140,43 @@ triton compiler依赖block-level control- and data-flow analysis来静态地sche
 
 ## grid：每个triton kernel跑在一个grid内
 
-task_id（mlu）
-
 调用kernel时需要指明这个循环有多少层，每层多少次，这就是grid的概念
 
 以Matmul而言，若A为MxK，B为KxN，那么C的大小就是MxN（M和N为parallel axis大小，K为reduction轴大小）
 
-每次分块计算，单块大小BLOCK_SIZE_M x BLOCK_SIZE_N，总共进行 $\frac{M}{\text{BLOCK\_{SIZE}\_{M}}} \times \frac{N}{\text{BLOCK\_{SIZE}\_{N}}}$次
+每次分块计算，单块大小BLOCK_SIZE_M x BLOCK_SIZE_N，总共进行 $\frac{M}{\text{BLOCK\_{SIZE}\_{M}}} \times \frac{N}{\text{BLOCK\_{SIZE}\_{N}}}$​​次
 
-这种group-order的行为能获得更好的data-reuse
+Triton中关于grid定义：
 
-<div style="text-align: center;"><img src="./img_Triton_language/Untitled.png" alt="Untitled" style="width: 90%;"></div>
+```python
+    grid = lambda META: (
+        triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']),
+    )
+    matmul_kernel[grid](
+        a, b, c,
+        M, N, K,
+        a.stride(0), a.stride(1),
+        b.stride(0), b.stride(1),
+        c.stride(0), c.stride(1),
+        ACTIVATION=activation
+    )
+```
+
+对比Cuda中launch kernel的行为
+
+```cpp
+    dim3 block(BLOCK_SIZE_M, BLOCK_SIZE_N);  
+    dim3 grid((M + BLOCK_SIZE_M - 1) / BLOCK_SIZE_M, (N + BLOCK_SIZE_N - 1) / BLOCK_SIZE_N);
+    matmul_kernel<<<grid,block>>>(Ad, Bd, Cd, M, N, K);
+```
+
+
+
+下面的group-order的行为能获得更好的data-reuse
+
+<div style="text-align: center;"><img src="./img_Triton_language/layout.png" alt="layout" style="width: 90%;"></div>
+
+分析：A和B中的内容都是行优先存储，以计算九个数为例，那么原始的一次load需要9+9$\times$9=90次read和9次write。而group order中，一次load需要9$\times$3+3$\times$9=54次read和9次write
 
 - num_pid_m 和 num_pid_n 就是为来获得矩阵长宽各可以分为多少个block（上图的黄色小块）
 
@@ -262,7 +305,7 @@ Layout：定义了Data是如何被Thread处理
 
 Distributed encodings have a layout function that is entirely characterized by a d-dimensional tensor L. Note that L doesn't need to have the same shape (or even the same rank) as the tensor it is encoding.
 
-<div style="text-align: center;"><img src="./img_Triton_language/%25E6%2588%25AA%25E5%25B1%258F2024-04-08_00.05.30.png" alt="截屏2024-04-08 00.05.30.png" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="./img_Triton_language/distribute_layout.png" alt="distribute_layout" style="width: 90%;"></div>
 
 ### block layout
 
@@ -270,7 +313,7 @@ An encoding where each warp owns a contiguous portion of the target tensor. This
 
 `#blocked0 = #triton_gpu.blocked<{sizePerThread = [1, 8], threadsPerWarp = [8, 4], warpsPerCTA = [8, 1], order = [1, 0]}>`
 
-### <img src="./img_Triton_language/Untitled%201.png" alt="Untitled" style="zoom:67%;" />
+<img src="./img_Triton_language/cta_wrap_thread.png" alt="Untitled" style="zoom:67%;" />
 
 - **sizePerThread = [1, 8]：每个线程处理数据Size**
 - **threadsPerWarp = [8, 4]： warp内线程的布局**
@@ -292,6 +335,6 @@ In order to **avoid shared memory bank conflicts**, elements may be **swizzled
 
 同一个warp内的thread同时访问同一列的数据
 
-<div style="text-align: center;"><img src="./img_Triton_language/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="./img_Triton_language/swizzled.png" alt="swizzled memory" style="width: 90%;"></div>
 
 [http://www.giantpandacv.com/project/OneFlow/【BBuf的CUDA笔记】十三，OpenAI Triton 入门笔记一/](http://www.giantpandacv.com/project/OneFlow/%E3%80%90BBuf%E7%9A%84CUDA%E7%AC%94%E8%AE%B0%E3%80%91%E5%8D%81%E4%B8%89%EF%BC%8COpenAI%20Triton%20%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0%E4%B8%80/)
