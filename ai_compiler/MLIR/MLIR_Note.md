@@ -466,11 +466,11 @@ MLIR中的数据流图是由Operation和Value构成的：（use-def chain）
 
 Operation都包含Results和Operands；Results中包含多个OpResult实例，Operands中包含多个OpOperand实例
 
-![Untitled](./img_basic/Untitled.png)
+<div style="text-align: center;"><img src="./img_MLIR_Note/Untitled.png" alt="Untitled" style="width: 90%;"></div>
 
 - 修改Operand时，实际是修改OpOperand，对应value的use-chain也会被修改
 
-![Untitled](./img_basic/Untitled%201.png)
+<div style="text-align: center;"><img src="./img_MLIR_Note/Untitled%201.png" alt="Untitled" style="width: 90%;"></div>
 
 ### Operation找Value
 
@@ -836,7 +836,7 @@ Value a->get()
 
 Operation都包含Results和Operands；Results中包含多个OpResult实例，Operands中包含多个OpOperand实例
 
-![Untitled](./img_basic/Untitled.png)
+<div style="text-align: center;"><img src="./img_MLIR_Note/Untitled.png" alt="Untitled" style="width: 90%;"></div>
 
 ---
 
@@ -848,7 +848,7 @@ Operation都包含Results和Operands；Results中包含多个OpResult实例，Op
 
 在不修改 IR 的情况下，每个 `Operation` 有唯一地址 ，如果只是对ir分析，可以使用 `llvm::DenseMap<Operation*, size_t> numberOfReference;` 来统计
 
-![Untitled](./img_basic/Untitled%202.png)
+<div style="text-align: center;"><img src="./img_MLIR_Note/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
 
 方法
 

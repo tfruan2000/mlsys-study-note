@@ -47,19 +47,19 @@ scp local_file remote_username@remote_ip:remote_folder
 
 执行 `sh Miniconda3-py37_4.9.2-Linux-x86_64.sh` 启动安装
 
-![image-20220925220059169](./img_编译安装/image-20220925220059169.png)
+<div style="text-align: center;"><img src="./img_编译安装/image-20220925220059169.png" alt="image-20220925220059169" style="width: 90%;"></div>
 
 回车下一步，然后然后长按`enter`，直到出现让输入`yes/no`
 
-![image-20220925220149543](./img_编译安装/image-20220925220149543.png)
+<div style="text-align: center;"><img src="./img_编译安装/image-20220925220149543.png" alt="image-20220925220149543" style="width: 90%;"></div>
 
 输入 yes 即可，然后回需要输入你需要安装的地址，我这里直接安装到/home/S/ruantingfeng/miniconda/
 
-![image-20220925220653571](./img_编译安装/image-20220925220653571.png)
+<div style="text-align: center;"><img src="./img_编译安装/image-20220925220653571.png" alt="image-20220925220653571" style="width: 90%;"></div>
 
 installer to initialize Miniconda3 ，输入`yes`，回车
 
-![image-20220925220751150](./img_编译安装/image-20220925220751150.png)
+<div style="text-align: center;"><img src="./img_编译安装/image-20220925220751150.png" alt="image-20220925220751150" style="width: 90%;"></div>
 
 ### 0.4 设置环境变量
 
@@ -97,7 +97,7 @@ conda config --set auto_activate_base false
 
 然后进行conda换源，`.condarc`文件一般在`.bashrc`同路径下，
 
-![image-20220925222016904](./img_编译安装/image-20220925222016904.png)
+<div style="text-align: center;"><img src="./img_编译安装/image-20220925222016904.png" alt="image-20220925222016904" style="width: 90%;"></div>
 
 ```cpp
 vim ~/.condarc
@@ -196,7 +196,7 @@ git clone --recursive https://github.com/apache/tvm tvm
 
 如果不使用`--recursive` 选项，将只能下载到`tvm-main`模块，缺少编译时必要的子模块，但如果服务器没有代理，基本上不可能下载下来。下图就是因为tvm源码不全造成的问题：
 
-![image-20220925234257698](./img_编译安装/image-20220925234257698.png)
+<div style="text-align: center;"><img src="./img_编译安装/image-20220925234257698.png" alt="image-20220925234257698" style="width: 90%;"></div>
 
 > 我还尝试过在本地(windows)挂代理，执行下述指令
 >
@@ -293,7 +293,7 @@ make -j4
 
 最后输出得到
 
-![image-20220926090558359](./深度学习编译器[0]——TVM的编译安装.assets/image-20220926090558359.png)
+<div style="text-align: center;"><img src="./深度学习编译器[0]——TVM的编译安装.assets/image-20220926090558359.png" alt="image-20220926090558359" style="width: 90%;"></div>
 
 (2) 使用`make -j4`开始编译
 
@@ -301,7 +301,7 @@ make -j4
 
 运行获得
 
-![image-20220926090943230](./深度学习编译器[0]——TVM的编译安装.assets/image-20220926090943230.png)
+<div style="text-align: center;"><img src="./深度学习编译器[0]——TVM的编译安装.assets/image-20220926090943230.png" alt="image-20220926090943230" style="width: 90%;"></div>
 
 (3) 在`make -j4`步骤可能遇见的问题
 
@@ -376,7 +376,7 @@ print(tvm__version__)
 
 输出如下即可
 
-![image-20220926095351317](./深度学习编译器[0]——TVM的编译安装.assets/image-20220926095351317.png)
+<div style="text-align: center;"><img src="./深度学习编译器[0]——TVM的编译安装.assets/image-20220926095351317.png" alt="image-20220926095351317" style="width: 90%;"></div>
 
 ```python
 from tvm import te
@@ -386,7 +386,7 @@ B = te.placeholder((n,), name="B")
 C = te.compute(A.shape, lambda i:A[i]+B[i], name="C")
 ```
 
-![image-20220926100817561](./深度学习编译器[0]——TVM的编译安装.assets/image-20220926100817561.png)
+<div style="text-align: center;"><img src="./深度学习编译器[0]——TVM的编译安装.assets/image-20220926100817561.png" alt="image-20220926100817561" style="width: 90%;"></div>
 
 (2) 方法二：Google Test
 
@@ -412,7 +412,7 @@ make install
 
 但可惜，我报错了，这应该是内部代码做检查用的，应该没影响(自我安慰)。
 
-![image-20220926100008289](./深度学习编译器[0]——TVM的编译安装.assets/image-20220926100008289.png)
+<div style="text-align: center;"><img src="./深度学习编译器[0]——TVM的编译安装.assets/image-20220926100008289.png" alt="image-20220926100008289" style="width: 90%;"></div>
 
 ## 结语
 

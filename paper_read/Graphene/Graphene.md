@@ -30,7 +30,7 @@ Evaluation : GEMM, Multi-Layer Perceptron (MLP), Layernorm, LSTM, and Fused Mult
 
 研究背景：
 
-![Untitled](./img_Graphene/Untitled.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled.png" alt="Untitled" style="width: 90%;"></div>
 
 Volta introduced Tensor Cores to compute small matrix multiplications in hardware
 
@@ -64,7 +64,7 @@ approaches for representing optimized tensor computations :
 
 TensorIR :
 
-![Untitled](./img_Graphene/Untitled%201.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%201.png" alt="Untitled" style="width: 90%;"></div>
 
 本文完成的工作 : Graphene 
 
@@ -95,14 +95,14 @@ the ldmatrix instruction :
     > 32 个 threads 移动 4 个 8 × 8 矩阵 —> 每 8 个 threads 分配给一个  8 × 8 tile —> 每个 thread 访问对应 tile 的一行 —> 每个 thread 在每个 tile 中都会接收到 2 个相邻的值(4个 tile, 一共八个值)
     > 
     
-    ![Untitled](./img_Graphene/Untitled%202.png)
+    <div style="text-align: center;"><img src="./img_Graphene/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
     
 
 像上图 (a)(b) 中表达的多维映射关系很难在 CUDA 代码中表示出来
 
 CUDA C++/PTX : 
 
-![Untitled](./img_Graphene/Untitled%203.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%203.png" alt="Untitled" style="width: 90%;"></div>
 
 代码从上到下：
 
@@ -116,7 +116,7 @@ reshape the warp into 2 × 2 8-thread groups (**a set of scalar thread index**)
 
 Graphene : 
 
-![Untitled](./img_Graphene/Untitled%204.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%204.png" alt="Untitled" style="width: 90%;"></div>
 
 代码从上到下：
 
@@ -134,7 +134,7 @@ Existing tensor IRs that typically use integer lists for specifying the shapes a
 
 ### 3.1 Expressing Tensors in Graphene
 
-![Untitled](./img_Graphene/Untitled%205.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%205.png" alt="Untitled" style="width: 90%;"></div>
 
 global memory (off-chip), shared memory (on-chip, shared by threads within a thread-block) and registers (thread-local)
 
@@ -153,7 +153,7 @@ A:[16,16].fp16.SH is actually represented as a row-major tensor A:[(16,16):(16,1
 
 —> 而索引很难表示出来
 
-![Untitled](./img_Graphene/Untitled%206.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%206.png" alt="Untitled" style="width: 90%;"></div>
 
 a: 4行，每行首元素间距是1；8列，每列首元素间距是4
 b: 4行，每行首元素间距是8；8列，每列首元素间距是1
@@ -168,7 +168,7 @@ Graphene’s key abstraction for representing such mappings are **tiles**
 
 给出一种生成不同 layout 的方法 .tile
 
-![Untitled](./img_Graphene/Untitled%207.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%207.png" alt="Untitled" style="width: 90%;"></div>
 
 b: 第一个维度( [ 2：1 ] )中两个逻辑相邻的元素 和 第二个维度( [ 4：1 ] )中四个逻辑相邻的元素 组成一个tile
 
@@ -198,11 +198,11 @@ use % as a prefix for data tensor names and # as a prefix for thread tensor name
 
 ldmatrix : A warp is tiled into four groups arranged, as 2 × 2, of eight contiguous threads
 
-![Untitled](./img_Graphene/Untitled%208.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%208.png" alt="Untitled" style="width: 90%;"></div>
 
 Tensor Core mma.m8n8k4 : non-contiguous quad-pairs
 
-![Untitled](./img_Graphene/Untitled%209.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%209.png" alt="Untitled" style="width: 90%;"></div>
 
 ## 5 SPECIFICATIONS AND DECOMPOSITIONS
 
@@ -215,14 +215,14 @@ specs
 - encapsulate a self-contained block of computation (封装了一个独立的计算块)
 - captures its input and output tensors as well as an execution configuration that describes the available threads for executing this computation (input, output, execution configuration)
 
-![Untitled](./img_Graphene/Untitled%2010.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2010.png" alt="Untitled" style="width: 90%;"></div>
 
 specs (describing the kernel-level computation) —> fine-grained specs (working on tiles of data and thread tensors) —> atomic specs (know how to generate code)
 
 > 首先用 specs 来描述 kernel-level computation，然后分解到更细粒度的 specs(working on tiles of data and thread tensors)，然后到可以指导codegen的atomic specs
 > 
 
-![Untitled](./img_Graphene/Untitled%2011.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2011.png" alt="Untitled" style="width: 90%;"></div>
 
 第5行声明了一个 warp-level data 从 share memory 移动到 registers 的行为
 
@@ -236,19 +236,19 @@ specs (describing the kernel-level computation) —> fine-grained specs (working
 
 Graphene 中给出了一些预先设定好的 specs，来表示操作
 
-![Untitled](./img_Graphene/Untitled%2012.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2012.png" alt="Untitled" style="width: 90%;"></div>
 
 这些 specs 根据 (input, output, execution configuration) 的不同，也会对应的映射不同的 PTX 指令
 
-![Untitled](./img_Graphene/Untitled%2013.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2013.png" alt="Untitled" style="width: 90%;"></div>
 
 ### 5.4 Example: A Simple GEMM Kernel
 
 generate Graphene IR using a Python API
 
-![Untitled](./img_Graphene/Untitled%2014.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2014.png" alt="Untitled" style="width: 90%;"></div>
 
-![Untitled](./img_Graphene/Untitled%2015.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2015.png" alt="Untitled" style="width: 90%;"></div>
 
 lines 1-5 : describe the input and output tensors and the available blocks and threads for executing this computation
 
@@ -270,9 +270,9 @@ For decomposed specs, we emit their implementation recursively and for tensor ma
 对于 tensor 操作，构建AST并将其编译为 thread index 和 buffer access expressions
 > 
 
-![Untitled](./img_Graphene/Untitled%2014.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2014.png" alt="Untitled" style="width: 90%;"></div>
 
-![Untitled](./img_Graphene/Untitled%2016.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2016.png" alt="Untitled" style="width: 90%;"></div>
 
 ## 6 EVALUATION
 
@@ -284,11 +284,11 @@ For decomposed specs, we emit their implementation recursively and for tensor ma
 
 - GEMM : match the performance of cuBLAS on both architectures
 
-![Untitled](./img_Graphene/Untitled%2017.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2017.png" alt="Untitled" style="width: 90%;"></div>
 
 - GEMM kernels with fused pointwise operations : match the performance of the highly tuned library(cuBLASLt) implementations
 
-![Untitled](./img_Graphene/Untitled%2018.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2018.png" alt="Untitled" style="width: 90%;"></div>
 
 **Hypothesis B: Graphene generates competitive fused kernels for important deep learning tensor computations. (对于DL任务，Graphene能生成高性能的fused kernel)**
 
@@ -296,12 +296,12 @@ For decomposed specs, we emit their implementation recursively and for tensor ma
 
 Fuse所有节点到一个kernel是为了 避免因为计算中间结果而往返于全局内存
 
-![Untitled](./img_Graphene/Untitled%2019.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2019.png" alt="Untitled" style="width: 90%;"></div>
 
 - Fused Multi-Head Attention (FMHA) :
 
-![Untitled](./img_Graphene/Untitled%2020.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2020.png" alt="Untitled" style="width: 90%;"></div>
 
 将Graphene生成的Ampere FMHA内核注入Huggedface Transformer网络，与常规的PyTorch推理性能相比，取得了高达59 %的加速比。加速比与每个网络中FMHA出现的比例相关
 
-![Untitled](./img_Graphene/Untitled%2021.png)
+<div style="text-align: center;"><img src="./img_Graphene/Untitled%2021.png" alt="Untitled" style="width: 90%;"></div>

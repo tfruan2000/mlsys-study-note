@@ -18,7 +18,7 @@
 
 tvm的结构
 
-![image-20230329133901335.png](./img_vectorize 和 tensorize Pass/image-20230329133901335.png)
+<div style="text-align: center;"><img src="./img_vectorize 和 tensorize Pass/image-20230329133901335.png" alt="image-20230329133901335.png" style="width: 90%;"></div>
 
 - `IRModule`：它是functions的集合，其中包含两种最关键的Function集合，即`relay::Function`和`tir::PrimFuc` 。
 - 上层`relay::Function`继承自`BaseFunction`，`relay::Function`对应一个end2end的模型，可以理解为一个支持控制流，递归，以及复杂数据结构的计算图。
@@ -78,7 +78,7 @@ Pass一般使用mlir提供的工具和框架来实现(Pass Manager和Transformat
 > https://zhuanlan.zhihu.com/p/582635481
 > 
 > 
-> ![v2-ee6ca5e08aee17b8f9998dd3a3da75c1_r.jpg](./img_vectorize 和 tensorize Pass/v2-ee6ca5e08aee17b8f9998dd3a3da75c1_r.jpg)
+> <div style="text-align: center;"><img src="./img_vectorize 和 tensorize Pass/v2-ee6ca5e08aee17b8f9998dd3a3da75c1_r.jpg" alt="v2-ee6ca5e08aee17b8f9998dd3a3da75c1_r.jpg" style="width: 90%;"></div>
 > 
 - Pass Manager可以自动化地运行一组Passes，以便为特定的目标生成高效的代码
 - Transformation Framework允许编写自定义的Pass，这些Pass可以在编译器的不同阶段使用

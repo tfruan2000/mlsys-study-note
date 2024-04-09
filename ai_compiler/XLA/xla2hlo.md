@@ -34,7 +34,7 @@ XLA对输入的HLO计算图进行**与目标设备无关的优化，如CSE（公
 
 > XLA IR在优化中，会将一些具名算子节点（BatchNormalization）直接替换为包含计算细节（+-*/），同时插入一些相关的add、multiply和maximum等节点；或者将另外的具名算子（Conv）替换为cuDNN API，并且插入相应的call、reshape等节点。接下来，会做一些fusion和dse等优化操作。
 
-![img](./img_xla2hlo/v2-84cd6a3244ebcd2f210626887a09c33f_b.jpg)
+<div style="text-align: center;"><img src="./img_xla2hlo/v2-84cd6a3244ebcd2f210626887a09c33f_b.jpg" alt="img" style="width: 90%;"></div>
 
 
 
@@ -50,7 +50,7 @@ tf2lxa：graph compile -> hlo graph build -> hlo pass pipeline -> hlo dataflow a
 
 HLO IR可以分成三个层次，HloModule, HloComputation和HloInstruction。
 
-![img](./img_xla2hlo/v2-16e964ead53e7c71c0cc4dff6ed11851_b.jpg)
+<div style="text-align: center;"><img src="./img_xla2hlo/v2-16e964ead53e7c71c0cc4dff6ed11851_b.jpg" alt="img" style="width: 90%;"></div>
 
 - HloModule
 
@@ -80,7 +80,7 @@ class HloInstruction {
 };
 ```
 
-![img](./img_xla2hlo/v2-ae9fc9f5aeb969d0c25940cd9f8f24c3_b.jpg)
+<div style="text-align: center;"><img src="./img_xla2hlo/v2-ae9fc9f5aeb969d0c25940cd9f8f24c3_b.jpg" alt="img" style="width: 90%;"></div>
 
 control dependency：有些instruction之间并没有数据依赖，但是我们仍然可能对这些instruction的执行顺序有额外的要求。在HloInstruction中有control_successors\_和control_predecessors_两个fields来表示control dependency。
 
@@ -137,4 +137,4 @@ https://tensorflow.google.cn/mlir/hlo_ops
 
 
 
-![MLIR CodeGen Dialect Hierarchy](./img_xla2hlo/codegen-dialect-hierarchy.svg)
+<div style="text-align: center;"><img src="./img_xla2hlo/codegen-dialect-hierarchy.svg" alt="MLIR CodeGen Dialect Hierarchy" style="width: 90%;"></div>

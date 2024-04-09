@@ -23,7 +23,7 @@ void quick_sort(T arr[], int start, int end){
 }
 ```
 
-![常见排序算法计算复杂度](img_coding_note/computational_complexity.png)
+<div style="text-align: center;"><img src="img_coding_note/computational_complexity.png" alt="常见排序算法计算复杂度" style="width: 90%;"></div>
 
 - 冒泡排序：比较相邻的元素
 

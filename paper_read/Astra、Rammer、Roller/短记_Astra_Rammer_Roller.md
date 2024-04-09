@@ -117,7 +117,7 @@ Roller系统结构
 
 rTile必须和给定张量表达式中的张量形状和底层硬件特性对齐
 
-![Untitled](img_Astra_Rammer_Roller/Untitled%202.png)
+<div style="text-align: center;"><img src="img_Astra_Rammer_Roller/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
 
 给定一个数据处理管道，其rProgram的优化目标是最大化管道的吞吐量，该目标可以转换为：
 

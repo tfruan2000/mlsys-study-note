@@ -24,7 +24,7 @@ HAL dialect:硬件相关的低阶接口
 backend
 ```
 
-![Untitled](./img_pipeline/Untitled.png)
+<div style="text-align: center;"><img src="./img_pipeline/Untitled.png" alt="Untitled" style="width: 90%;"></div>
 
 # 编译流程
 
@@ -37,7 +37,7 @@ IREE编译的入口是IREEVMTransformPassPipeline，IREEVMTransformPassPipeline�
 
 下图来源于：[https://www.khronos.org/assets/uploads/developers/presentations/IREE_targeting_Vulkan_Zhang_May22.pdf](https://www.khronos.org/assets/uploads/developers/presentations/IREE_targeting_Vulkan_Zhang_May22.pdf)
 
-![Untitled](./img_pipeline/Untitled%201.png)
+<div style="text-align: center;"><img src="./img_pipeline/Untitled%201.png" alt="Untitled" style="width: 90%;"></div>
 
 ## 1、InputConversionPassPipeline
 
@@ -184,7 +184,7 @@ Stream dialect 是IREE的中阶方言,用于描述异步调度和执行流程。
 
 主要作用是进行tiling、vectorization和bufferization等操作，分配计算负载，最终生成target device的代码。比如cuda target的dispatch source code会被递降为NVVM IR。
 
-![Untitled](./img_pipeline/Untitled%202.png)
+<div style="text-align: center;"><img src="./img_pipeline/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
 
 > --iree-hal-transformation-pipeline
 Runs the full IREE HAL dialect transformation pipeline

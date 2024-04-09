@@ -12,7 +12,7 @@ AI编译器可以涉及的两种切图：
 
 例如：[ISCA '23]Inter-layer Scheduling Space Definition and Exploration for Tiled Accelerators，使用资源分配树，来表示不同的层间调度方案，并描述层间调度的整体空间，是将传统的分布式技术从device之间的调度扩展到kernel之间的调度
 
-![[mlsys]distribute system.png](img_auto_parallelism/mlsysdistribute_system.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/mlsysdistribute_system.png" alt="[mlsys]distribute system.png" style="width: 90%;"></div>
 
 本文主要介绍第一种切图
 
@@ -86,7 +86,7 @@ repo： [https://github.com/flexflow/FlexFlow/tree/inference](https://github.com
     - Execution Sinulator：衡量当前candidate strategy的性能，避免e2e运行
 - Distribute Runtime：资源调度与执行
 
-![Untitled](img_auto_parallelism/Untitled.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled.png" alt="Untitled" style="width: 90%;"></div>
 
 ## SOPA
 
@@ -101,7 +101,7 @@ repo： [https://github.com/flexflow/FlexFlow/tree/inference](https://github.com
 
 下图是一些op的可并行维度
 
-![Untitled](img_auto_parallelism/Untitled%201.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%201.png" alt="Untitled" style="width: 90%;"></div>
 
 FlexFlow的并行策略S包含了每个op的并行策略
 
@@ -110,7 +110,7 @@ FlexFlow的并行策略S包含了每个op的并行策略
 - deg(Sample) = 2表示将该op的Sample维度划分为2等份，deg(Channel_out)=2表示将该op的Channel_out维度划分为2等份
 - t_{i}:{k}的值 表示config c_i中，执行任务 t_{i}:{k} 的设备
 
-![Untitled](img_auto_parallelism/Untitled%202.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
 
 ## Execution Simulator
 
@@ -131,13 +131,13 @@ FlexFlow的并行策略S包含了每个op的并行策略
     （Alpa中考虑了一个resharding开销，当一个op的input_tensor并不满足该op的切分config时，需要引入额外的resharding开销）
     - 每个task包含以下属性
 
-![Untitled](img_auto_parallelism/Untitled%203.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%203.png" alt="Untitled" style="width: 90%;"></div>
 
 - 边：task之间的先后关系
 
 下图是简易网络构建的task graph例
 
-![Untitled](img_auto_parallelism/Untitled%204.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%204.png" alt="Untitled" style="width: 90%;"></div>
 
 2.simulator algorithm  
 
@@ -147,17 +147,17 @@ FlexFlow的并行策略S包含了每个op的并行策略
 
 按照task就绪时间的先后来运行，每次运行一个任务就更新队列中相关任务的状态
 
-![Untitled](img_auto_parallelism/Untitled%205.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%205.png" alt="Untitled" style="width: 90%;"></div>
 
 （2）delta simulation algorithm
 
 对于每个新candidate strategy，以上次strategy生成的task graph为基础，只对执行时间轴发生变化的部分所涉及的task进行重新计算。其余任务规划和full simulation algorithm相同
 
-![Untitled](img_auto_parallelism/Untitled%206.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%206.png" alt="Untitled" style="width: 90%;"></div>
 
 下图中，左侧是full simulation algorithm生成的任务规划图，r为readyTime，s为startTime。右侧为delta simulation algorithm针对新strategy生成的task graph，相比上一个task graph，变化的task只有黑色阴影部分，只需要重新计算这一部分耗时。
 
-![Untitled](img_auto_parallelism/Untitled%207.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%207.png" alt="Untitled" style="width: 90%;"></div>
 
 ## Execution Optimizer
 
@@ -214,7 +214,7 @@ paper：[https://arxiv.org/abs/2007.04069](https://arxiv.org/abs/2007.04069)
 
 Auto-MAP在HLO IR层面应用RL的方法，来自动生成并行策略（包含DP、OPP、PP）。利用DQN (Deep Q-Network) 算法，结合task-specifical减枝，来search space。大约耗时2h，针对NLP和CV任务都有作用。
 
-![Untitled](img_auto_parallelism/Untitled%208.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%208.png" alt="Untitled" style="width: 90%;"></div>
 
 HLO IR可以看作为一个图
 
@@ -237,13 +237,13 @@ DQN将神经网络作为Q function approximator，本文使用ranbow agent来自
 - 丢弃noise linear layers
 - 针对任务调整DNN层数
 
-![Untitled](img_auto_parallelism/Untitled%209.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%209.png" alt="Untitled" style="width: 90%;"></div>
 
 ## workload
 
 用户输入的model经过xla编译为HLO IR表示，再依次通过Explorer获得并行策略
 
-![Untitled](img_auto_parallelism/Untitled%2010.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2010.png" alt="Untitled" style="width: 90%;"></div>
 
 1.Operator Partitioning Parallelism
 
@@ -266,14 +266,14 @@ propagation过程：
 - state：每个op都有一维向量，包含该op的全体维度划分情况，有三种值，-1、0、1
   按原文意思，变量每个维度的策略相同，沿着所有设备划分或者复制
   
-    ![截屏2024-02-24 23.10.38.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-24_23.10.38.png)
+    <div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-24_23.10.38.png" alt="截屏2024-02-24 23.10.38.png" style="width: 90%;"></div>
   
 - action：true代表沿着所有设备partition，false代表沿着所有设备replicate
 - reward：partition比replicate有更高的奖励，但是违反设置的推导规则的partition行为将被惩罚
 
 Linkage Group: 记录了由其自身引起的其他可训练变量的确定性划分决策。当选择策略时，能更快确定该策略是否可行，用于启发式减枝。
 
-![截屏2024-02-24 23.21.48.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-24_23.21.48.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-24_23.21.48.png" alt="截屏2024-02-24 23.21.48.png" style="width: 90%;"></div>
 
 2.Auto Data Parallelism
 
@@ -290,7 +290,7 @@ action和reward同OPP，但是state是input size的所有划分维度状态
     - 按照每个stage的计算比例来分配计算资源
     - GPU集群中，GPU之间的层级（以链接方式来划分，NVlink/PCI-e等）不同，通信速度也就不同，这适用于不同的任务
 
-![截屏2024-02-24 23.52.54.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-24_23.52.54.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-24_23.52.54.png" alt="截屏2024-02-24 23.52.54.png" style="width: 90%;"></div>
 
 Auto-MAP模型
 
@@ -318,7 +318,7 @@ Auto-MAP模型
 
 对于每个op，其每个维度依次决定并行情况
 
-![截屏2024-02-25 00.15.44.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-25_00.15.44.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-25_00.15.44.png" alt="截屏2024-02-25 00.15.44.png" style="width: 90%;"></div>
 
 linkage group: 选择一个变量及其划分决策，并将这一对发送到propagation模块以推导其他变量的决策。
 
@@ -336,21 +336,21 @@ linkage group: 选择一个变量及其划分决策，并将这一对发送到pr
 
 3）得到可行的device-cute方案（还要考虑设备内存的限制）
 
-![截屏2024-02-25 00.29.39.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-25_00.29.39.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-25_00.29.39.png" alt="截屏2024-02-25 00.29.39.png" style="width: 90%;"></div>
 
 ## Evaluation
 
 Operator Partition Parallelism
 
-![截屏2024-02-25 00.35.43.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-25_00.35.43.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-25_00.35.43.png" alt="截屏2024-02-25 00.35.43.png" style="width: 90%;"></div>
 
 Data Parallelism
 
-![截屏2024-02-25 00.38.09.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-25_00.38.09.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-25_00.38.09.png" alt="截屏2024-02-25 00.38.09.png" style="width: 90%;"></div>
 
 Pipeline Parallelism
 
-![截屏2024-02-25 00.39.49.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-25_00.39.49.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-25_00.39.49.png" alt="截屏2024-02-25 00.39.49.png" style="width: 90%;"></div>
 
 # GSPMD
 
@@ -374,11 +374,11 @@ Alpa将并行策略分为
 
 1. Intra-Operator Parallelism：将tensor按某些维度（一般有batch、channel、height、width）切分，放到不同device上计算
    
-    ![截屏2024-01-01 11.35.50.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_11.35.50.png)
+    <div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_11.35.50.png" alt="截屏2024-01-01 11.35.50.png" style="width: 90%;"></div>
     
 2. Inter-Operator Parallelism：将计算图切分为多个计算stage，放在不同的device-mesh上计算
    
-    ![截屏2024-01-01 11.36.20.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_11.36.20.png)
+    <div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_11.36.20.png" alt="截屏2024-01-01 11.36.20.png" style="width: 90%;"></div>
     
 
 为什么分为这两种并行：
@@ -391,13 +391,13 @@ Alpa将并行策略分为
 
 将Inter-op Parallelism映射到低带宽互联的devices上（距离较远的设备）
 
-![截屏2024-01-01 14.21.53.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_14.21.53.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_14.21.53.png" alt="截屏2024-01-01 14.21.53.png" style="width: 90%;"></div>
 
 Alpa的runtime会协调这两级并行，在两级空间中**分别探索最优解：**
 
 子结构（stage-mesh）最优（执行开销最小）+ 子结构之间的通信开销最小—>**并不能保证全局最优**
 
-![截屏2024-01-01 15.06.46.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_15.06.46.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_15.06.46.png" alt="截屏2024-01-01 15.06.46.png" style="width: 90%;"></div>
 
 Runtime Orchestration pass：系统优化、cross-mesh通信等
 
@@ -419,7 +419,7 @@ Runtime Orchestration pass：系统优化、cross-mesh通信等
 
 以2D（NxM） Tensor到2D（axb） Mesh Device的所有切分与映射说明
 
-![Untitled](img_auto_parallelism/Untitled%2011.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2011.png" alt="Untitled" style="width: 90%;"></div>
 
 每个op的sharding spec为$X_0 X_1$，$X_0$表示沿tensor的第0维（沿列=按行）切分情况，$X_1$表示沿tensor的第1维（沿行=按列）切分情况
 
@@ -429,27 +429,27 @@ $S^0$和$S^1$有且只能出现一次
 
 sharding spec图解：
 
-![Untitled](img_auto_parallelism/Untitled%2012.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2012.png" alt="Untitled" style="width: 90%;"></div>
 
 $S^0R$：tensor沿列（按行）切分为a份，每份[N/a, M]，**mesh中第i（0≤i<a）行中所有device都执行op的[N/a * i, M]** —> 沿mesh第0维（沿列）张量并行（张量被横向切分）+ 沿mesh第1维（沿行）数据并行（每个输入为batch/b）
 
-![Untitled](img_auto_parallelism/Untitled%2013.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2013.png" alt="Untitled" style="width: 90%;"></div>
 
 $RS^1$：tensor沿行（按列）切分为b份，每份[N, M/b]，**mesh中第j（0≤j<b）列中所有device都执行op的[**N, M/b * j**]** —> 沿mesh第1维（沿行）张量并行（张量被纵向切分）+ 沿mesh第0维（沿列）数据并行（每个输入为batch/a）
 
-![Untitled](img_auto_parallelism/Untitled%2014.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2014.png" alt="Untitled" style="width: 90%;"></div>
 
 下图列出了Tensor（NxM ）到Mesh Device（2x2）的所有切分与映射示例。数字代表device标号，颜色表示op的tensor分片
 
-![截屏2024-01-02 22.59.26.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-02_22.59.26.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-02_22.59.26.png" alt="截屏2024-01-02 22.59.26.png" style="width: 90%;"></div>
 
-![截屏2024-01-02 23.01.41.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-02_23.01.41.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-02_23.01.41.png" alt="截屏2024-01-02 23.01.41.png" style="width: 90%;"></div>
 
 （3）对于每个op，由其input tensor shape可以推导出output tensor shape，反之亦然。故由output切分可以推出input切分，这种推导规则被称为parallel algorithm。
 
 每种operator可能会有多条推导规则（对应多种output切分），有些algorithm会引入一些通信补偿保持数学等价性，下表是batch matmul（$C_{b,i,j} = \sum_{k}A_{b,i,k}B_{b,k,j}$）的多条parallel algorithm的示例（shrading spec有3位，是在显式地拆分batch）
 
-![Untitled](img_auto_parallelism/Untitled%2015.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2015.png" alt="Untitled" style="width: 90%;"></div>
 
 由于model是以XLA的HLO IR格式表示，其中常见的DL运算符可以总结为不到80个primitive operators，因此对于每个op都列举出parallel algorithm表格。这样就可以为每个operator选择一个parallel algorithm，目标整体stage-mesh的execution cost最小
 
@@ -474,7 +474,7 @@ $s_v, s_u$分别为op v和op u选择paralle algorithm的情况，$R_{uv}$是一�
 
 假设op u的输入来自于op v的输出，但op u的输入tensor切分情况与op v的输出tensor不符合，就需要resharding**开销**
 
-![截屏2024-01-04 15.04.36.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_15.04.36.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_15.04.36.png" alt="截屏2024-01-04 15.04.36.png" style="width: 90%;"></div>
 
 （3）求解：使用ILP求解“stage执行开销最小”问题
 
@@ -487,13 +487,13 @@ $s_v, s_u$分别为op v和op u选择paralle algorithm的情况，$R_{uv}$是一�
 
 将计算图的op（按拓扑序）组织为stages，将device cluster划分为device meshes，每个stage在对应的device mesh上执行—>stage-mesh pair
 
-![截屏2024-01-01 21.23.07.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_21.23.07.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_21.23.07.png" alt="截屏2024-01-01 21.23.07.png" style="width: 90%;"></div>
 
 计算图按照**user define的顺序进行拓扑排序**，得到算子列表记为$(o_1, \dots , o_K)$，算子$o_k$的输入来自于$(o_1, \dots , o_{k-1})$。一共分为S个stage，为$(s_1, \dots, s_S)$，stage $s_i$包含的op有$(o_{li}, \dots, o_{ri})$，并且分配device mesh $(n_i \times m_i)$
 
 mesh**可选 shape 的限制**：为了不浪费cluster mesh (N*M，N台机器，每台机器M个节点/device)的计算资源，并保证device之间更高的通信带宽，mesh一般整选取 (2, M)、(3, M) …… (N, M)
 
-![截屏2024-01-01 21.22.37.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_21.22.37.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_21.22.37.png" alt="截屏2024-01-01 21.22.37.png" style="width: 90%;"></div>
 
 1.计算图总开销最小
 
@@ -501,7 +501,7 @@ mesh**可选 shape 的限制**：为了不浪费cluster mesh (N*M，N台机器�
 
 由于计算stage之间只存在一条传递数据依赖，令第一个stage每次只执行全部输入的1/B个batch—>引入pipeline parallelism
 
-![截屏2024-01-04 16.29.54.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_16.29.54.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_16.29.54.png" alt="截屏2024-01-04 16.29.54.png" style="width: 90%;"></div>
 
 因此，计算图的总开销（即pipeline执行开销）为：**B为超参数，microbatch=batch/B**
 
@@ -532,7 +532,7 @@ mesh**可选 shape 的限制**：为了不浪费cluster mesh (N*M，N台机器�
 
 初始条件 $F(0,K,0|t_{max}) = 0$，F的求解公式如下
 
-![截屏2024-01-04 17.39.56.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_17.39.56.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_17.39.56.png" alt="截屏2024-01-04 17.39.56.png" style="width: 90%;"></div>
 
 $t_{intra}((o_k, \dots , o_i), Mesh(n_s, m_s),s)$来自于intra-op pass的输出，输入为算子序列$(o_k, \dots , o_i)$$(o_k, \dots , o_i)、 Mesh(n_s, m_s)$，其中mesh还需要枚举所有可能$n_l \times m_l = n_s \times m_s$，以获得最优开销。同时选择的策略需要满足内存需求（执行stage、存储中间结果）
 
@@ -546,7 +546,7 @@ $t_{intra}((o_k, \dots , o_i), Mesh(n_s, m_s),s)$来自于intra-op pass的输出
 
 使用多个worker并行的编译stage
 
-![截屏2024-01-04 19.18.39.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_19.18.39.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_19.18.39.png" alt="截屏2024-01-04 19.18.39.png" style="width: 90%;"></div>
 
 3.最优执行总时间公式再思考
 
@@ -572,24 +572,24 @@ $T^* = \min\limits_{\{(s_0, Mesh(n_0, m_0)),\dots,(s_S, Mesh(n_S, m_S)\}} \{\sum
 - 必要时插入集体通信原语来解决intra-op pass引起的mesh内部通信
 - cross-mesh resharding：优化通信，从p2p到all-gather
   
-    ![截屏2024-01-04 19.27.19.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_19.27.19.png)
+    <div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_19.27.19.png" alt="截屏2024-01-04 19.27.19.png" style="width: 90%;"></div>
     
 
 整体架构
 
-![截屏2024-01-04 19.24.00.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_19.24.00.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_19.24.00.png" alt="截屏2024-01-04 19.24.00.png" style="width: 90%;"></div>
 
 ## Evalution
 
 媲美极致手工优化的性能，针对没有手工优化的baseline也能有不错的吞吐
 
-![Untitled](img_auto_parallelism/Untitled%2016.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2016.png" alt="Untitled" style="width: 90%;"></div>
 
 以GPT-39B为例，主要耗时在枚举stage-mesh pairs以及profiling（获取staged latency 和内存需求）
 
-![截屏2024-01-04 19.46.39.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_19.46.39.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_19.46.39.png" alt="截屏2024-01-04 19.46.39.png" style="width: 90%;"></div>
 
-![截屏2024-01-04 19.42.48.png](img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_19.42.48.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_19.42.48.png" alt="截屏2024-01-04 19.42.48.png" style="width: 90%;"></div>
 
 ## Ads & DisAds
 
@@ -635,13 +635,13 @@ pipeline parallelism：将stage划分建模为ILP问题，ILP Solver以总通信
     - TepDist execution engine construction(task graph construction and static scheduling order determination for the task graph)
 - 执行阶段：the client sends the data input command to execute the plan
 
-![Untitled](img_auto_parallelism/Untitled%2017.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2017.png" alt="Untitled" style="width: 90%;"></div>
 
 ## **SPMD Strategy**
 
 SPMD策略：无需对庞大的DAG线性处理，而是按照三个层级
 
-![Untitled](img_auto_parallelism/Untitled%2018.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2018.png" alt="Untitled" style="width: 90%;"></div>
 
 cone（op的tensor的切分）→segment（cone的切分）→graph（segment的切分）
 
@@ -654,7 +654,7 @@ cone（op的tensor的切分）→segment（cone的切分）→graph（segment的
 - all graph
     - 现在graph由近似线性拓扑的segment组成，天然适合DP来解决，以获得全图通信开销最小
     
-    ![Untitled](img_auto_parallelism/Untitled%2019.png)
+    <div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2019.png" alt="Untitled" style="width: 90%;"></div>
     
 
 ## Pipeline strategy
@@ -664,10 +664,10 @@ pipeline stage的划分：
 - 要求各个stage计算量均匀，最小化communication section
 - 节点的前驱（下图蓝色）和后继关系（下图红色）将作为线性约束来建模ILP问题
 
-![Untitled](img_auto_parallelism/Untitled%2020.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2020.png" alt="Untitled" style="width: 90%;"></div>
 
 ## other
 
 只看了auto-distirbuted的技术，其他没关注，感兴趣可以参考看看论文和[官方blog](https://www.alibabacloud.com/blog/tepdist-an-hlo-based-fully-automatic-distributed-system-has-opened-its-source-code-to-the-public_600356) 学习
 
-![Untitled](img_auto_parallelism/Untitled%2021.png)
+<div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2021.png" alt="Untitled" style="width: 90%;"></div>

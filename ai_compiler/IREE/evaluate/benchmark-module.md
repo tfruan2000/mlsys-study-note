@@ -394,7 +394,7 @@ transform.sequence failures(propagate) {
 
 ## summary
 
-![Untitled](./img_benchmark-module/Untitled.png)
+<div style="text-align: center;"><img src="./img_benchmark-module/compilation_flow.png" alt="compilation_flow" style="width: 90%;"></div>
 
 ```bash
 iree-compile --iree-hal-target-backends=llvm-cpu --compile-to=hal

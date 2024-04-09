@@ -25,7 +25,7 @@
 - 调度变换
 - 代码生成
 
-![Untitled](./img_Polyhedral_Compilation/Untitled.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled.png" alt="Untitled" style="width: 90%;"></div>
 
 ### 普通循环嵌套中应用Poly优化
 
@@ -39,7 +39,7 @@ for (int i = 1; i < N; i++)
 
 如果将 写入A[i, j]的一次语句的迭代实例 表示为 下图中黑色的点表示，从而我们可以构造出一个所有黑色的点构成的一个矩形，这个矩形就可以看作是二维空间上的一个Polyhedron（多面体），这个空间称为该计算的迭代空间。
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%201.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%201.png" alt="Untitled" style="width: 90%;"></div>
 
 > 我们可以用代数中的集合来对这个二维空间上的Polyhedron进行表示，即{[i, j] : 1 <= i <= N - 1 and 1 <= j <= N – 1}，其中[i, j]是一个二元组，“:”后面的不等式表示这个集合的区间。我们可以给这个二元组做一个命名，叫做S，表示一个语句，那么这个语句的Polyhedron就可以表示成{S[i, j] : 1 <= i <= N - 1 and 1 <= j <= N – 1}。
 > 
@@ -58,11 +58,11 @@ for (int i = 1; i < N; i++)
 
 Poly对程序的表示都是用集合和映射来完成的。当我们把语句实例之间的依赖关系用蓝色箭头表示在迭代空间内时，就可以得到下图所示的形式（二维空间的基是(i, j)，即对应i和j两层循环）。其中，没有依赖关系的语句实例之间是可以并行执行的，而图中绿色带内（对角线上）的所有点之间没有依赖关系，所以这些点之间可以并行执行。
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%202.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
 
 Poly利用仿射变换把基(i, j)进行变换，使绿色带能**与空间基的某根轴能够平行，这样轴对应的循环就能并行**，所以我们可以将上图所示的空间转化成如下图所示的形式。此时，语句S的调度就可以表示成{ S[i, j] -> [i + j, j]}的形式。所以**Poly的变换过程也称为调度变换过程，而调度变换的过程就是变基过程、实现循环变换的过程。**
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%203.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%203.png" alt="Untitled" style="width: 90%;"></div>
 
 > Poly的底层原理就是求解一个系数矩阵，这个系数矩阵能够将向量(i, j)转换成向量(i + j, j)。
 > 
@@ -82,15 +82,15 @@ for (int c0 = 2; c0 <= 2*N-2; c0 += 1)
 
 - skewing变换
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%204.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%204.png" alt="Untitled" style="width: 90%;"></div>
 
 - Fusion变换
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%205.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%205.png" alt="Untitled" style="width: 90%;"></div>
 
 - Tiling变换
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%206.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%206.png" alt="Untitled" style="width: 90%;"></div>
 
 ### 二维卷积运算中应用Poly优化
 
@@ -127,13 +127,13 @@ Poly会将循环嵌套内的计算抽象成一个语句。例如上图中中S1�
 
 生成代码采用了({S0}, {S1, S2, S3})的fusion策略。
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%207.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%207.png" alt="Untitled" style="width: 90%;"></div>
 
 - Poly生成的OpenMP代码——局部性大于并行性（图b）
 
 生成代码使用了({S0,S1, S2, S3})的fusion策略，但是必须通过对S2向右偏移99次、S3向右偏移148次，以及循环层次的interchange（交换）来实现这样的fusion。
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%208.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%208.png" alt="Untitled" style="width: 90%;"></div>
 
 对比：
 
@@ -154,15 +154,15 @@ Poly会将循环嵌套内的计算抽象成一个语句。例如上图中中S1�
 
 图a对应的CUDA代码（如图c）会生成2个kernel（因为之前合成了两个部分），但是每个kernel内c0维度的循环被映射到GPU的线程块上，而c1维度被映射到GPU的线程上。（线程块上线程布局为32*16）
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%209.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%209.png" alt="Untitled" style="width: 90%;"></div>
 
 - Poly生成的CUDA代码——局部性大于并行性（图d）
 
 图b对应的CUDA代码（如图d）只有一个kernel，但是只有c0维度的循环被映射到GPU的线程块和线程两级并行抽象上。（线程块上线程布局为32* 4* 4）
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2010.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2010.png" alt="Untitled" style="width: 90%;"></div>
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2011.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2011.png" alt="Untitled" style="width: 90%;"></div>
 
 ## 2. Poly在深度学习领域中发挥的作用
 
@@ -178,17 +178,17 @@ Poly会将循环嵌套内的计算抽象成一个语句。例如上图中中S1�
 
 Poly会自动实现分块，这样才能更好地利用底层AI芯片的架构特性。以GPU为例，每个GPU上拥有自己的全局缓存（Global/Device Memory），然后每个线程块也有自己的局部缓存（Shared/Local Memory）。缓存越靠近计算单元，访存的速度越快，但是缓存空间越小。因此，当计算数据量大于缓存空间的时候，就需要通过将原来的数据进行分块的方式存储到缓存上，以此来适应目标架构的硬件特征。
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2012.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2012.png" alt="Untitled" style="width: 90%;"></div>
 
 而专用AI芯片的架构可能更复杂，如下图所示是TPU v2和TPU v3的架构示意图，每个TPU有多种不同类型的计算单元，包括标量、向量以及矩阵计算单元，这些不同的计算单元对应地可能会有各自不同的缓存空间，这就给分块提出了更高的要求。只有通过对应用的正确分块才能充分利用好芯片上的架构特征。
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2013.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2013.png" alt="Untitled" style="width: 90%;"></div>
 
 ---
 
 当前一部分深度学习编译软件栈采用了**手工调度和映射**（手写schedule和pattern matching）的方式来将上层应用部署到底层芯片上。以TVM为例，下图中给出了一个TVM的调度示例。其中，调度过程首先将计算s进行分块（对应图中的split操作），然后将分块后的维度映射到GPU的线程块和线程上（对应图中的bind操作）。
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2014.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2014.png" alt="Untitled" style="width: 90%;"></div>
 
 这部分工作需要由熟悉底层芯片架构的人员来编写，并且要人工分析分块的合法性，映射也需要手工完成，耗时耗力。而Poly的作用就是将上述手工调度的过程自动实现。为了实现自动调度，许多深度学习编译软件栈开始采用Poly来实现上述功能。
 
@@ -216,7 +216,7 @@ Poly会自动实现分块，这样才能更好地利用底层AI芯片的架构�
 
 \3. **自动实现缓存上的数据部署**。以华为刚公布的昇腾AI处理器芯片为例，下图是该芯片的AI Core架构示意图。其中，UnifiedBuffer（输出缓冲区）和L1 Buffer（输入缓冲区）是低级缓存，离计算单元较远；BufferA L0/B L0/C L0是高级缓存，靠近计算单元。在低级缓存上，Poly可以**借助标记节点**，将不同计算单元所需的数据分别流向UnifiedBuffer和L1 Buffer；同时，当数据到达高级缓存时，Poly仍然可以借助标记节点将数据自动部署到BufferA L0/B L0/C L0
 
-![Untitled](./img_Polyhedral_Compilation/Untitled.jpeg)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled.jpeg" alt="Untitled" style="width: 90%;"></div>
 
 ---
 
@@ -252,25 +252,25 @@ for(int i=0; i<100; i++)
 
 - Poly生成的OpenMP代码——并行性大于局部性（图a）：
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2015.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2015.png" alt="Untitled" style="width: 90%;"></div>
 
 Poly计算出来的调度用其中间表示（schedule tree）得到的结果如图（图e）（下图sequence节点的左子树中*S*1都是*S*0）：
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2016.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2016.png" alt="Untitled" style="width: 90%;"></div>
 
 - Poly生成的OpenMP代码——局部性大于并行性（图b）
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2017.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2017.png" alt="Untitled" style="width: 90%;"></div>
 
 Poly计算出来的调度用其中间表示（schedule tree）得到的结果如图（图f）：
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2018.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2018.png" alt="Untitled" style="width: 90%;"></div>
 
 \2. **自动实现tiling/blocking（分块）和fusion（融合）变换**。`分块是为了充分利用加速芯片上的缓存，而fusion的目的是为了生成更多的临时缓存变量，（减少中间变量的存取开销）降低访存开销`。而且，Poly通过数学变换，能够自动实现更复杂的、手工难以实现的分块形状。其中，融合可根据**调度选项**在调度变换过程实现，分块则是在调度变换之后根据**循环维度**是否可分块等特征来实现。
 
 如图e和f就是根据不同的编译选项实现的fusion策略对应的schedule tree，其中fusion已经通过sequence节点实现，而分块在Poly上只需要**将band节点中的仿射函数进行修改**，就可以得到分块对应的schedule tree。下图是图e经过分块之后的调度树，图f的分块也可以同样的方式得到，就不再赘述了。（下图sequence节点的左子树中*S*1都是*S*0）
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2019.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2019.png" alt="Untitled" style="width: 90%;"></div>
 
 \3. 通过代码生成方式自动实现**不改变语句顺序、只改变循环结构**的变换。这类循环变换包括peeling（剥离）、unrolling（展开）等。这些循环变换对特殊加速芯片上的代码生成有十分重要的作用，例如一些架构可能并不喜欢循环上下界中有min/max这样的操作，此时就需要实现这类循环变换。**这类循环变换可以通过在schedule tree中的band节点上添加特殊的options属性来实现。**（注：上面schedule tree的图中没有标出options，但实际使用的schedule tree中有options，而options中的内容是一个集合或者映射表达式。）
 
@@ -294,13 +294,13 @@ Poly计算出来的调度用其中间表示（schedule tree）得到的结果如
 
 → 要求并行性大于局部性：选定fusion策略({S0}, {S1, S2, S3})，Poly生成的OpenMP代码，以及相应的schedule tree（其中fusion已经通过sequence节点实现，sequence节点的左子树中*S*1都是*S*0）
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2020.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2020.png" alt="Untitled" style="width: 90%;"></div>
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2021.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2021.png" alt="Untitled" style="width: 90%;"></div>
 
 → 分块在Poly上只需要**将band节点中的仿射函数进行修改**，就可以得到分块对应的schedule tree（下图sequence节点的左子树中*S*1都是*S*0）
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2022.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2022.png" alt="Untitled" style="width: 90%;"></div>
 
 → 将fusion和分块后的schedule tree插入特殊的extension节点，带有数据传输指令的中间表示
 
@@ -314,7 +314,7 @@ Poly计算出来的调度用其中间表示（schedule tree）得到的结果如
 > Poly并没有传输tensor b，而是在GPU的global memory上创建和使用了tensor b。
 > 
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2023.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2023.png" alt="Untitled" style="width: 90%;"></div>
 
 ---
 
@@ -342,11 +342,11 @@ for(h=0;h<H;h++)
 
 得到最后的schedule tree如下：
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2024.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2024.png" alt="Untitled" style="width: 90%;"></div>
 
 代码对应如图：
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2025.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2025.png" alt="Untitled" style="width: 90%;"></div>
 
 ## 3. AI芯片上利用Poly进行软硬件优化的一些问题
 
@@ -368,15 +368,15 @@ void simple_example(){
 
 用schedule tree对该部分代码进行表示，可以得到下图所示的IR形式。（下图表示的内容和上一节画出的schedule tree一致，只不过这里用文字的形式表示）
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2026.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2026.png" alt="Untitled" style="width: 90%;"></div>
 
 而MLIR表示出的IR形式如下：
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2027.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2027.png" alt="Untitled" style="width: 90%;"></div>
 
 对比可以看出，MLIR的Poly IR对循环进行了**更加显式的表达**，而省略了schedule tree中的domain、schedule等信息。这种Poly IR**简化了Poly在实现循环变换之后的代码生成过程**。例如：在实现`Skewing/Shifting`（倾斜/偏移）变换时，MLIR可以由上图生成下图。
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2028.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2028.png" alt="Untitled" style="width: 90%;"></div>
 
 思考这种简化方案是否值得：
 
@@ -400,7 +400,7 @@ Poly的调度算法[见下面的文献]**基于线性整数规划来求解新的
 
 下图是线性整数规划问题求解的示意图，其中蓝色的点表示整个空间上的整数，而图中的斜边可以看作是循环边界等信息给出的约束，这些约束构成了一个可行解区间（图中绿色部分）。那么调度问题可以抽象成在这个绿色的解空间内寻找一个目标问题（红色箭头）的最优解（在Poly 里，就是寻找按字典序最小的整数解）。
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2029.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2029.png" alt="Untitled" style="width: 90%;"></div>
 
 但上面所说的线性整数规划求解都是针对通用程序设计语言，如果我们将Poly应用到如深度学习这样的特定领域，是否需要考虑和通用语言一样的循环变换集合？
 
@@ -414,7 +414,7 @@ Poly的调度算法[见下面的文献]**基于线性整数规划来求解新的
 
 以下图的二维卷机操作为例，卷积核（kernel）通过在输入图像（input）上进行“滑动”来计算输出图像（output）的结果，而这种滑动的过程在大多数情况下会导致输入图像的数据被多次访问。
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2030.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2030.png" alt="Untitled" style="width: 90%;"></div>
 
 ---
 
@@ -428,7 +428,7 @@ Poly的调度算法[见下面的文献]**基于线性整数规划来求解新的
 
 带有冗余计算的分块是目前降低内存开销最有效的方式之一。下图列出了三种不同的分块形状，其中最左侧的梯形分块引入了冗余计算，但是这种分块在一次分块计算完成（水平方向）后，分块内需要传递给下一次计算的活跃变量（红色圆圈）总数最少，而其它形状如中间的分裂分块和最右侧的平行四边形分块剩余的活跃变量总数都很多，无法实现有效降低内存开销的目的。其它未列出的分块如钻石分块和六角形分块可以看作是分裂分块的一种特殊形式。
 
-![Untitled](./img_Polyhedral_Compilation/Untitled%2031.png)
+<div style="text-align: center;"><img src="./img_Polyhedral_Compilation/Untitled%2031.png" alt="Untitled" style="width: 90%;"></div>
 
 其它分块相关的问题还很多，比如Poly中实现的分块都是计算的分块，而数据分块只是通过计算分块和计算与数据之间的仿射函数来计算得到，这种结果能够保证数据的分块是最优的吗？
 

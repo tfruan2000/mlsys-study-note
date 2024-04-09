@@ -52,7 +52,9 @@ SIMT、SIMD、Dataflow：AI的训练和推理对性能和时延都非常敏感�
 
 ## 发展
 
-![图片](./img_AI_Compiler_Survey/640.png)
+<div style="text-align: center;">
+<img src="./img_AI_Compiler_Survey/发展.png" alt="发展" style="width: 90%;">
+</div>
 
 当前主要在第二阶段向第三阶段的发展过程中，主要问题如下：
 
@@ -66,7 +68,9 @@ SIMT、SIMD、Dataflow：AI的训练和推理对性能和时延都非常敏感�
 
 ## 技术要点
 
-![截屏2023-03-20 18.38.59](./img_AI_Compiler_Survey/截屏2023-03-20 18.38.59-9310780.png)
+<div style="text-align: center;">
+<img src="./img_AI_Compiler_Survey/结构.png" alt="结构" style="width: 90%;">
+</div>
 
 ### 前端
 
@@ -97,7 +101,9 @@ High-level IR 也称为 Graph IR，用于表示计算图，常见下面两种形
 
 HLO IR中的计算图优化
 
-![截屏2023-03-23 20.48.17](./img_AI_Compiler_Survey/截屏2023-03-23 20.48.17.png)
+<div style="text-align: center;">
+<img src="./img_AI_Compiler_Survey/hlo优化.png" alt="hlo优化" style="width: 90%;">
+</div>
 
 ### 后端
 
@@ -105,7 +111,9 @@ HLO IR中的计算图优化
 
 后端优化首先就是针对于硬件的优化，从而生成更加高效的代码。一种方法是利用 LLVM，另一种方法是用深度学习领域定制的优化。
 
-![截屏2023-03-23 20.49.31](./img_AI_Compiler_Survey/截屏2023-03-23 20.49.31.png)
+<div style="text-align: center;">
+<img src="./img_AI_Compiler_Survey/后端优化.png" alt="后端优化" style="width: 90%;">
+</div>
 
 - **Hardware intrinsic mapping**：将一段 low-level IR 转化成硬件上已高度优化的指令。
 - **Memory allocation and fetching**：GPU 上有专有的内存和共享的内存，两者容量和延迟均不同，因此存在不同的调度策略。
@@ -197,9 +205,12 @@ Dataflow架构特点：
 
 ## MindSpore
 
-![图片](./img_AI_Compiler_Survey/640-20230323103100217.png)
+<div style="text-align: center;">
+<img src="./img_AI_Compiler_Survey/技术框架.png" alt="MS技术框架" style="width: 90%;">
+</div>
 
 基于多层规约的图算融合引擎、自动算子生成：
 
-![图片](./img_AI_Compiler_Survey/640.jpeg)
-
+<div style="text-align: center;">
+<img src="./img_AI_Compiler_Survey/MS框架.png" alt="MS框架" style="width: 80%;">
+</div>

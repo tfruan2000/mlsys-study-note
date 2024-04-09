@@ -60,7 +60,7 @@ DISC支持TensorFlow和PyTorch，且同时支持动态shape和静态shape混合�
 
 整个流程：在未知完整shape的情况的情况下进行编译，编译时同时生成**关于shape计算逻辑**以及kernel计算的代码，期间也会收集**shape约束信息**，并使用约束分析指导编译优化过程。
 
-![v2-e68e87bbfeab11afd84bb40a17e1a179_r.jpg](img_DISC/v2-e68e87bbfeab11afd84bb40a17e1a179_r.jpg)
+<div style="text-align: center;"><img src="img_DISC/v2-e68e87bbfeab11afd84bb40a17e1a179_r.jpg" alt="v2-e68e87bbfeab11afd84bb40a17e1a179_r.jpg" style="width: 90%;"></div>
 
 > BladeDISC架构图，出自：https://zhuanlan.zhihu.com/p/552484413
 > 
@@ -73,7 +73,7 @@ DISC支持TensorFlow和PyTorch，且同时支持动态shape和静态shape混合�
 
 将原有中间表示HLO中的start_indices、limit_indices、strides等属性值使用张量的形式进行保存，使得可以在运行时将计算得到的shape值传入。
 
-![截屏2023-03-02 23.26.10.png](img_DISC/%25E6%2588%25AA%25E5%25B1%258F2023-03-02_23.26.10.png)
+<div style="text-align: center;"><img src="img_DISC/%25E6%2588%25AA%25E5%25B1%258F2023-03-02_23.26.10.png" alt="截屏2023-03-02 23.26.10.png" style="width: 90%;"></div>
 
 ## HLO相关补充
 
@@ -81,7 +81,7 @@ DISC支持TensorFlow和PyTorch，且同时支持动态shape和静态shape混合�
 
 HLO IR可以分成三个层次，HloModule, HloComputation和HloInstruction。
 
-![Untitled](img_DISC/Untitled.jpeg)
+<div style="text-align: center;"><img src="img_DISC/Untitled.jpeg" alt="Untitled" style="width: 90%;"></div>
 
 - HloModule
 
@@ -111,7 +111,7 @@ data dependency：如果一个instruction的output是另一个instruction的inpu
  };
 ```
 
-![Untitled](img_DISC/Untitled%201.jpeg)
+<div style="text-align: center;"><img src="img_DISC/Untitled%201.jpeg" alt="Untitled" style="width: 90%;"></div>
 
 control dependency：有些instruction之间并没有数据依赖，但是我们仍然可能对这些instruction的执行顺序有额外的要求。在HloInstruction中有control_successors_和control_predecessors_两个fields来表示control dependency。
 

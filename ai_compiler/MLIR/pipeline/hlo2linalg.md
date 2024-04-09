@@ -30,7 +30,7 @@
 
 完整的流程：模型文件 → TF dialect（tf_executor Dialect → tf Dialect）→ xla_hlo→xla_lhlo → linalg Dialect
 
-![img](./img_hlo2linalg/1251718-20210923060706363-1852351942.png)
+<div style="text-align: center;"><img src="./img_hlo2linalg/1251718-20210923060706363-1852351942.png" alt="img" style="width: 90%;"></div>
 
 下文参考：https://discourse.llvm.org/t/llvm-ir-segmentation-fault-core-dumped/4302/1
 
@@ -96,7 +96,7 @@ mlir-translate add-llvm.mlir -mlir-to-llvmir -o add.ll
 
 
 
-![3](./img_hlo2linalg/3-7236750.png)
+<div style="text-align: center;"><img src="./img_hlo2linalg/3-7236750.png" alt="3" style="width: 90%;"></div>
 
 
 

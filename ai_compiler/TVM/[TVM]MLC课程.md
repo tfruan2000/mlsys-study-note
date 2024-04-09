@@ -11,7 +11,7 @@
 
 The process of transforming and optimizing machine learning execution from its development form to its deployment form.
 
-![https://mlc.ai/_images/dev-deploy-form.png](https://mlc.ai/_images/dev-deploy-form.png)
+<div style="text-align: center;"><img src="https://mlc.ai/_images/dev-deploy-form.png" alt="https://mlc.ai/_images/dev-deploy-form.png" style="width: 90%;"></div>
 
 > Development form(开发): The set of elements we use when developing machine learning models. Such as Pytorch, Tensorflow, or JAX, as well as weights associated with them.
 > 
@@ -33,12 +33,12 @@ Several goals:
 
 ### **1.3 Key Elements in Machine Learning Compilation**
 
-![https://mlc.ai/zh/_images/mlc-elements.png](https://mlc.ai/zh/_images/mlc-elements.png)
+<div style="text-align: center;"><img src="https://mlc.ai/zh/_images/mlc-elements.png" alt="https://mlc.ai/zh/_images/mlc-elements.png" style="width: 90%;"></div>
 
 - Tensor
 - Tensor functions: weights and the sequence of computations that takes in tensors and output tensors
 
-![https://mlc.ai/_images/mlc-elem-transform.png](https://mlc.ai/_images/mlc-elem-transform.png)
+<div style="text-align: center;"><img src="https://mlc.ai/_images/mlc-elem-transform.png" alt="https://mlc.ai/_images/mlc-elem-transform.png" style="width: 90%;"></div>
 
 - Abstraction and implementation: We use **abstractions** to denote the ways we use to represent the same tensor function. Different abstractions may specify some details while leaving out other **implementation** details. (使用**抽象 (Abstraction)**来表示我们用来表示相同张量函数的方式。不同的抽象可能会指定一些细节，而忽略其他**实现(Implementations)**细节)
 
@@ -50,15 +50,15 @@ MLC process could be viewed as transformations among tensor function .
 
 e.g. : several computation steps that transform tensor from input to final prediction, and each step is called a `primitive tensor function`.
 
-![https://mlc.ai/_images/primitive_tensor_func.png](https://mlc.ai/_images/primitive_tensor_func.png)
+<div style="text-align: center;"><img src="https://mlc.ai/_images/primitive_tensor_func.png" alt="https://mlc.ai/_images/primitive_tensor_func.png" style="width: 90%;"></div>
 
 `linear`,`add`,`relu`,`add` are all primitive tensor function, and they have different forms
 
-![https://mlc.ai/_images/tensor_func_abstractions.png](https://mlc.ai/_images/tensor_func_abstractions.png)
+<div style="text-align: center;"><img src="https://mlc.ai/_images/tensor_func_abstractions.png" alt="https://mlc.ai/_images/tensor_func_abstractions.png" style="width: 90%;"></div>
 
 Many frameworks offer machine leaning compilation procedures to `transform primitive tensor functions` into more specialized ones for the particular workload and deployment environment.
 
-![https://mlc.ai/_images/tensor_func_transformation.png](https://mlc.ai/_images/tensor_func_transformation.png)
+<div style="text-align: center;"><img src="https://mlc.ai/_images/tensor_func_transformation.png" alt="https://mlc.ai/_images/tensor_func_transformation.png" style="width: 90%;"></div>
 
 example transforming: thread binding, loop reorder
 
@@ -89,7 +89,7 @@ class MyModule:
 
 `Program-based transformations` can be used to optimize tensor programs —> change the program through a `sequence of transformations`  完成一系列的变换(split、parallelize、vectorize)
 
-![https://mlc.ai/_images/tensor_func_seq_transform.png](https://mlc.ai/_images/tensor_func_seq_transform.png)
+<div style="text-align: center;"><img src="https://mlc.ai/_images/tensor_func_seq_transform.png" alt="https://mlc.ai/_images/tensor_func_seq_transform.png" style="width: 90%;"></div>
 
 but we can’t perform aribitrary transformations, the tensor progrom need to incorporate some extra information. 表明 `vi` 这个特定的变量被映射到循环变量 `i`，并且所有的迭代都是独立的。
 
@@ -225,7 +225,7 @@ vi, vj, vk = T.axis.remap("SSR", [i, j, k]) # 语法糖：让程序更易读和�
 
 对于一组固定的 `vi` 和 `vj`，计算块在 `Y` 的空间位置 (`Y[vi, vj]`) 处生成一个点值，该点值独立于 `Y` 中的其他位置（具有不同的`vi`, `vj` 值的位置）。我们可以称 `vi`、`vj` 为**空间轴**，因为它们直接对应于块写入的缓冲区空间区域的开始。 涉及归约的轴（`vk`）被命名为**归约轴**。   例如：固定(vi, vj)为(0, 1)，对于vk in range(128)，执行Block Y，计算得到Y[vi, vj]
 
-![https://mlc.ai/zh/_images/tensor_ir_block_axis.png](https://mlc.ai/zh/_images/tensor_ir_block_axis.png)
+<div style="text-align: center;"><img src="https://mlc.ai/zh/_images/tensor_ir_block_axis.png" alt="https://mlc.ai/zh/_images/tensor_ir_block_axis.png" style="width: 90%;"></div>
 
 上一节提到的 `extra informations(block axis range and their properties)` 不仅仅是用来改变 transforms，而且可以用来validate the correctness of the external loops that are used to carry out the computation
 
@@ -481,7 +481,7 @@ MyModuleTE = tvm.IRModule({"mm_relu":te_func})
 print(MyModuleTE.script())
 ```
 
-![https://mlc.ai/zh/_images/mlc_process.png](https://mlc.ai/zh/_images/mlc_process.png)
+<div style="text-align: center;"><img src="https://mlc.ai/zh/_images/mlc_process.png" alt="https://mlc.ai/zh/_images/mlc_process.png" style="width: 90%;"></div>
 
 - 手写TensorIR，固定shape
 
@@ -735,7 +735,7 @@ sch.unroll(...)
 
 ## 3. **Build End to END Model**
 
-![image-20230329133901335.png](./img_MLC课程/image-20230329133901335.png)
+<div style="text-align: center;"><img src="./img_MLC课程/image-20230329133901335.png" alt="image-20230329133901335.png" style="width: 90%;"></div>
 
 - `IRModule`：它是functions的集合，其中包含两种最关键的Function集合，即`relay::Function`和`tir::PrimFuc` 。
 - 上层`relay::Function`继承自`BaseFunction`，`relay::Function`对应一个end2end的模型，可以理解为一个支持控制流，递归，以及复杂数据结构的计算图。
@@ -788,7 +788,7 @@ plt.show()
 print("Class:", class_names[label[0]])
 ```
 
-![截屏2023-05-30 12.08.14.png](./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-30_12.08.14.png)
+<div style="text-align: center;"><img src="./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-30_12.08.14.png" alt="截屏2023-05-30 12.08.14.png" style="width: 90%;"></div>
 
 - numpy实现
 
@@ -909,11 +909,11 @@ class MyModule:
 
 关于 `R.function` ，观察其和numpy代码的对应，看起来是在构建神经网络
 
-![https://mlc.ai/zh/_images/e2e_compare_to_lnumpy.png](https://mlc.ai/zh/_images/e2e_compare_to_lnumpy.png)
+<div style="text-align: center;"><img src="https://mlc.ai/zh/_images/e2e_compare_to_lnumpy.png" alt="https://mlc.ai/zh/_images/e2e_compare_to_lnumpy.png" style="width: 90%;"></div>
 
 可视化其对应的计算图：
 
-![https://mlc.ai/zh/_images/e2e_computational_graph_call_tir.png](https://mlc.ai/zh/_images/e2e_computational_graph_call_tir.png)
+<div style="text-align: center;"><img src="https://mlc.ai/zh/_images/e2e_computational_graph_call_tir.png" alt="https://mlc.ai/zh/_images/e2e_computational_graph_call_tir.png" style="width: 90%;"></div>
 
 可见， `R.call_dps_packed` 是用于引入 `T.prim_func` 
 
@@ -1200,11 +1200,11 @@ def stochastic_schedule_mm(sch: tvm.tir.Schedule):
     return sch
 ```
 
-![截屏2023-05-31 10.33.29.png](./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-31_10.33.29.png)
+<div style="text-align: center;"><img src="./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-31_10.33.29.png" alt="截屏2023-05-31 10.33.29.png" style="width: 90%;"></div>
 
 每次运行代码都会获得不固定的结果，可以认为是 `stochastic_schedule_mm` 函数产生了一个搜索空间，我们需要在其中寻找最优
 
-![https://mlc.ai/zh/_images/auto_prog_optim_transformation_search.png](https://mlc.ai/zh/_images/auto_prog_optim_transformation_search.png)
+<div style="text-align: center;"><img src="https://mlc.ai/zh/_images/auto_prog_optim_transformation_search.png" alt="https://mlc.ai/zh/_images/auto_prog_optim_transformation_search.png" style="width: 90%;"></div>
 
 最简单的搜索算法 —> 找到
 
@@ -1260,7 +1260,7 @@ database = ms.tune_tir(
 sch = ms.tir_integration.compile_tir(database, MyModule, "llvm --num-cores=1") # 这样获得的sch就是最优配置的stochastic_schedule_mm
 ```
 
-![截屏2023-05-31 15.15.02.png](./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-31_15.15.02.png)
+<div style="text-align: center;"><img src="./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-31_15.15.02.png" alt="截屏2023-05-31 15.15.02.png" style="width: 90%;"></div>
 
 ```python
 # 评估
@@ -1669,7 +1669,7 @@ print("\n")
 fx_module.graph.print_tabular()
 ```
 
-![截屏2023-05-31 19.55.57.png](./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-31_19.55.57.png)
+<div style="text-align: center;"><img src="./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-31_19.55.57.png" alt="截屏2023-05-31 19.55.57.png" style="width: 90%;"></div>
 
 然后，构造映射函数，主要流程如下：
 
@@ -1970,7 +1970,7 @@ class Module:
 
 要对 GPU 进行编程，我们需要创建一组线程块 (thread blocks)，每个 thread 映射到单个核心，而 block 映射到流式多处理器 (SM)
 
-![https://mlc.ai/zh/_images/gpu_stream_processors.png](https://mlc.ai/zh/_images/gpu_stream_processors.png)
+<div style="text-align: center;"><img src="https://mlc.ai/zh/_images/gpu_stream_processors.png" alt="https://mlc.ai/zh/_images/gpu_stream_processors.png" style="width: 90%;"></div>
 
 ### 6.1 向量加
 
@@ -2008,7 +2008,7 @@ sch.mod.show()
 
 - 然后我们将迭代器绑定到 GPU 线程块
 
-![https://mlc.ai/zh/_images/gpu_thread_blocks.png](https://mlc.ai/zh/_images/gpu_thread_blocks.png)
+<div style="text-align: center;"><img src="https://mlc.ai/zh/_images/gpu_thread_blocks.png" alt="https://mlc.ai/zh/_images/gpu_thread_blocks.png" style="width: 90%;"></div>
 
 ```python
 sch.bind(i0, "blockIdx.x")
@@ -2042,7 +2042,7 @@ print(C_nd)
 
 会报错，为什么呢？
 
-![截屏2023-05-31 21.34.01.png](./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-31_21.34.01.png)
+<div style="text-align: center;"><img src="./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-31_21.34.01.png" alt="截屏2023-05-31 21.34.01.png" style="width: 90%;"></div>
 
 还是安心使用手写吧
 
@@ -2081,7 +2081,7 @@ print(C_nd)
 
 ### 6.2 **窗口求和**
 
-![https://mlc.ai/zh/_images/window_sum.png](https://mlc.ai/zh/_images/window_sum.png)
+<div style="text-align: center;"><img src="https://mlc.ai/zh/_images/window_sum.png" alt="https://mlc.ai/zh/_images/window_sum.png" style="width: 90%;"></div>
 
 ```python
 @tvm.script.ir_module
@@ -2142,7 +2142,7 @@ sch.mod.show()
 
 左：使用 `cache_read` 后； 右：重新划分后
 
-![截屏2023-06-01 11.56.31.png](./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-06-01_11.56.31.png)
+<div style="text-align: center;"><img src="./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-06-01_11.56.31.png" alt="截屏2023-06-01 11.56.31.png" style="width: 90%;"></div>
 
 然后检查相应的底层代码（CUDA 中），生成的代码包含两部分：
 
@@ -2208,7 +2208,7 @@ class MyModuleMatmul:
 
 引入 **本地存储分块 (Local Blocking) ，**进行循环拆分，来增加整体内存复用
 
-![https://mlc.ai/zh/_images/gpu_local_blocking.png](https://mlc.ai/zh/_images/gpu_local_blocking.png)
+<div style="text-align: center;"><img src="https://mlc.ai/zh/_images/gpu_local_blocking.png" alt="https://mlc.ai/zh/_images/gpu_local_blocking.png" style="width: 90%;"></div>
 
 ```python
 # 进行循环拆分，来增加整体内存复用，并且本地存储切分块
@@ -2622,7 +2622,7 @@ class MyModule:
 
 MyModule 包含一个带有两个图层 op 的 relax 函数，其中包含 relax.op.multiply 和relax.op.add。我们的目标是找到这两个运算符并将它们替换为一个 relax.op.ewise_fma 运算符的调用
 
-![https://mlc.ai/zh/_images/relax_func_data_structure.png](https://mlc.ai/zh/_images/relax_func_data_structure.png)
+<div style="text-align: center;"><img src="https://mlc.ai/zh/_images/relax_func_data_structure.png" alt="https://mlc.ai/zh/_images/relax_func_data_structure.png" style="width: 90%;"></div>
 
 改写程序可以通过递归遍历 MyModule 的 AST ，并生成转换后的 AST 来实现。下面的代码块遵循一种称为 **访问者模式 (visitor pattern)** 的设计模式，它允许我们访问每个 AST 节点并将它们重写为转换后的版本。
 
@@ -2652,4 +2652,4 @@ updated_fn = relax.analysis.remove_all_unused(updated_fn)
 updated_fn.show()
 ```
 
-![截屏2023-05-31 21.08.19.png](./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-31_21.08.19.png)
+<div style="text-align: center;"><img src="./img_MLC课程/%25E6%2588%25AA%25E5%25B1%258F2023-05-31_21.08.19.png" alt="截屏2023-05-31 21.08.19.png" style="width: 90%;"></div>

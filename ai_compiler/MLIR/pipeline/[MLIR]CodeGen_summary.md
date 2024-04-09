@@ -12,7 +12,7 @@
 
 本文主要以 tensorflow 为例，介绍了其接入 MLIR 后的 CodeGen 过程，以及简要分析了一些现在常用的 CodeGen pipeline。本文是本人在结合博客([Codegen Dialect Overview - MLIR - LLVM Discussion Forums](https://discourse.llvm.org/t/codegen-dialect-overview/2723))以及相关资料而写成，主体内容来源于翻译。
 
-![0](./img_CodeGen_summary/0.png)
+<div style="text-align: center;"><img src="./img_CodeGen_summary/0.png" alt="0" style="width: 90%;"></div>
 
 ## 现状
 
@@ -26,7 +26,7 @@ dialect 在 payload/structure 轴上的分解可以体现出，它是描述应�
 
 dialect 在上述轴上的分解并不是二进制表示的，尤其对于那些更高的抽象级别。许多操作会多多少少都指定了结构(structure)。例如， vector dialect 的操作意味着 SIMD 执行模型。在编译过程中，“如何执行”的描述会越来越详细并且用用低级表述。同时，抽象堆栈的较低层级倾向于将structure操作和payload操作分开，以便在仅仅转换structure操作的同时，又保留对payload操作的抽象理解。
 
-![1](./img_CodeGen_summary/1.png)
+<div style="text-align: center;"><img src="./img_CodeGen_summary/1.png" alt="1" style="width: 90%;"></div>
 
 ### Dialects of Interest
 
@@ -36,7 +36,7 @@ dialects 可以根据其 feature 的抽象级别 粗略地组织到一个堆栈�
 
 >   在编译器一系列转换程序的过程中，越来越多的高层次的简明信息被打散，转换为低层次的细碎指令，这个过程被称为代码表示递降`lowerinng` ，与之相反的过程被称为代码表示递升`raising` 。raising远比lowering困难，因为需要在庞杂的细节中找出宏观脉络。
 
-![2](./img_CodeGen_summary/2.png)
+<div style="text-align: center;"><img src="./img_CodeGen_summary/2.png" alt="2" style="width: 90%;"></div>
 
 大多数 pipeline 通过 [Linalg Dialect](https://mlir.llvm.org/docs/Dialects/Linalg/) 进入 in-tree dialect  的基础设施， linalg dialect 中，基于结构化数据对结构化计算使用了通用的表示形式(a versatile representation of structured computation on structured data)。这种 dialect 是为了转换(transformations)而专门设计出来的，只需要很少量的分析就可以完成转换；并且它同时支持 tensor 和 buffer 作为操作数，bufferization 过程（实现tensor到buffer的转换）也可以在不改变操作本身完成。此外， Linalg Dialect 提供了具有特定负载的 [“named” operations ](https://mlir.llvm.org/docs/Dialects/Linalg/#named-payload-carrying-opsa-namenamed_opsa)（如：矩阵乘法和卷积），也提供了用于定义 structure 的 [“generic” operations](https://mlir.llvm.org/docs/Dialects/Linalg/#payload-carrying-opsa-namepayload_opsa)。这两种形式之间可以互相转换。Linalg Dialect 的迭代结构允许它们转换为向量(vector)操作，以及基于向量或标量操作的(仿射，Affine Dialect)循环。
 
@@ -62,7 +62,7 @@ SCF 也可以通过用 blocks之间的分支 替换 结构化控制流 来转换
 
 ### TensorFlow Kernel Generator
 
-![3](./img_CodeGen_summary/3.png)
+<div style="text-align: center;"><img src="./img_CodeGen_summary/3.png" alt="3" style="width: 90%;"></div>
 
 Tensorflow Kernel Generator项目，从TensorFlow（TF）Dialect开始，最近已经转向从 [MHLO ](https://github.com/tensorflow/mlir-hlo#meta-hlo-dialect-mhlo)去生成 `Linalg-on-tensors`，并在 Linalg 上调用 bufferization 之前，在该级别上执行融合。进一步的循环转换(loop transformations)(如tiling)发生在 SCF Dialect 级别，然后转换为 target-specific GPU dialect；而有效负载操作(payload operations)则先转换为 Standard Dialect 再转换为 LLVM Dialect。在现在已经不用的 prototypes 中尝试过 使用 LMHLO Dialect 去生成 `Linalg-on-buffers`，并在 SCF 上执行所有转换，但 SCF 中的转换比张量抽象更复杂。
 
@@ -74,13 +74,13 @@ Tensorflow Kernel Generator项目，从TensorFlow（TF）Dialect开始，最近�
 
 ### IREE Compiler (LLVM Target)
 
-![4](./img_CodeGen_summary/4.png)
+<div style="text-align: center;"><img src="./img_CodeGen_summary/4.png" alt="4" style="width: 90%;"></div>
 
 [IREE](https://github.com/google/iree#iree-intermediate-representation-execution-environment)(Intermediate Representation Execution Environment)具有它自己的高级表示以及一组 dialects，从代码生成的目的来说，这些 dialects 正在向 Linalg-on-tensors 的方向发展。IREE-specific dialects 主要用于组织计算有效载荷，目前可以表示为MHLO、TOSA(Tensor Operator Set Architecture)、Linalg-on-tensors等。大多数转换都发生在 Linalg Dialect 中，在 tensor 或者 buffer 级别，以及 bufferization 过程(tensor向buffer转换)。执行文件的首选路径是lower到 Vector Dialect，在这里可以进行额外的转换。当从 Linalg Dialect 往下 lowering 时，SCF 可用于围绕向量操作的控制流(control flow around vector operations)，但对这些操作不执行任何转换。去生成 SCF Dialect 本质上意味着不再进行进一步的结构优化。Vector Dialect 可以逐步 lower 到复杂度较低的抽象，直到最终生成 LLVM Dialect。
 
 ### IREE Compiler (SPIR-V Target)
 
-![5](./img_CodeGen_summary/5.png)
+<div style="text-align: center;"><img src="./img_CodeGen_summary/5.png" alt="5" style="width: 90%;"></div>
 
 [SPIR-V](https://mlir.llvm.org/docs/Dialects/SPIR-V/)(Standard Portable Intermediate Representation, [Khronos group](https://www.khronos.org/spir/) standard.)是IREE编译器的主要目标。顶层流程类似于上一节中生成 LLVM IR 的流程，大多数转换都发生在 Linalg-on-tensor 和 Vector 级别上。从这里开始，lowering 倾向于直接转到 SPIR-V ，SPIR-V 具有一组跨越多个抽象级别的丰富操作集，操作集中包含：高级操作、结构化控制流和类指令的原语(high-level operations, structured control flow and instruction-like primitives)。该流程通过 GPU Dialect 进行 device-only operations，如工作项标识符提取，并依赖 IREE 的 runtime 来管理 GPU 内核。
 
@@ -94,7 +94,7 @@ Tensorflow Kernel Generator项目，从TensorFlow（TF）Dialect开始，最近�
 
 ### Polyhedral Compiler
 
-![6](./img_CodeGen_summary/6.png)
+<div style="text-align: center;"><img src="./img_CodeGen_summary/6.png" alt="6" style="width: 90%;"></div>
 
 多面体编译流是从 HLO 开始，通过转换来自 LMHLO 的 Affine Dialect 或者其他 bufferized 形式的操作来实现，并不会 lower 到 Linalg。Affine Dialect 是多面体变换目前支持的主要抽象，大多数转换都发生在这种 dialect 上。之后代码被 lower 到  SCF control flow 和 Standard memory operations，再进一步转换为 platform-specific 抽象，如 OpenMP 或 GPU。
 
@@ -148,11 +148,11 @@ Linalg  Dialect 是 MLIR CodeGen pipeline 的主要入口点之一。它可以�
 
 ## END
 
-![MLIR CodeGen Dialect Hierarchy](./img_CodeGen_summary/codegen-dialect-hierarchy-20230214213053227.svg)
+<div style="text-align: center;"><img src="./img_CodeGen_summary/codegen-dialect-hierarchy-20230214213053227.svg" alt="MLIR CodeGen Dialect Hierarchy" style="width: 90%;"></div>
 
 最后附上一张较新的流程图([来源](https://discourse.llvm.org/t/rfc-updated-mlir-dialect-overview-diagram/64266))
 
-![7](./img_CodeGen_summary/7.jpeg)
+<div style="text-align: center;"><img src="./img_CodeGen_summary/7.jpeg" alt="7" style="width: 90%;"></div>
 
 **上一篇：**[MLIR深入 —— 转换流程详解(以Toy接入为例) - 知乎 (zhihu.com)](https://zhuanlan.zhihu.com/p/582635481)
 

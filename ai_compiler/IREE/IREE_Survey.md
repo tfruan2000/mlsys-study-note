@@ -12,9 +12,9 @@
 
 讲解下图： https://drive.google.com/drive/u/0/folders/1sRAsgsd8Bvpm_IxREmZf2agsGU2KvrK-
 
-![截屏2023-02-28 09.31.47](./img_IREE_Survey/截屏2023-02-28 09.31.47.png)
+<div style="text-align: center;"><img src="./img_IREE_Survey/截屏2023-02-28 09.31.47.png" alt="截屏2023-02-28 09.31.47" style="width: 90%;"></div>
 
-![截屏2023-02-28 09.31.38](./img_IREE_Survey/截屏2023-02-28 09.31.38.png)
+<div style="text-align: center;"><img src="./img_IREE_Survey/截屏2023-02-28 09.31.38.png" alt="截屏2023-02-28 09.31.38" style="width: 90%;"></div>
 
 主要特征：
 

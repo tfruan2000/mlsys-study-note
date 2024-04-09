@@ -115,21 +115,21 @@ $\rightarrow$ 优点：降低复杂性、减少维护成本、较容易实现扩
 
 下图表示的是结构化代码生成流程：
 
-![截屏2022-12-10 16.26.12](./img_CodeGenerationInMLIR/截屏2022-12-10 16.26.12.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2022-12-10 16.26.12.png" alt="截屏2022-12-10 16.26.12" style="width: 90%;"></div>
 
 起点是structured IR，其由张量代数运算构成
 
-![step1](./img_CodeGenerationInMLIR/step1.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/step1.png" alt="step1" style="width: 90%;"></div>
 
 $\rightarrow$ 进入tiled structured level，它将tiled引入loop。tiling produces loops around structured operations。并且这个level执行tensor fusion，以保障能够高效映射到硬件上。
 
-![step2](./img_CodeGenerationInMLIR/step2.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/step2.png" alt="step2" style="width: 90%;"></div>
 
 $\rightarrow$ 将生成结果是small tensor的计算映射到（可重定向的）向量抽象，此阶段还可以应用padding以实现高效的cache访问
 
 > 使得结构化代码具有高度可组合性和可重用性的原因：tiling和fusion转换在各个数据结构阶段都是完全通用的。这些转换会是应用于 一个通用的、单调的（从集合包含的角度）、与计算和复合数据相关的结构分解模式。
 
-![step3](./img_CodeGenerationInMLIR/step3.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/step3.png" alt="step3" style="width: 90%;"></div>
 
 $\rightarrow$ 继续lower成side-effecting buffers的表示，得到一个representation with nested loops on vectors and side-effects，更多关于循环和内存访问的优化发生在这一层
 
@@ -143,11 +143,11 @@ $\rightarrow$ 最后将representation直接转换为MLIR的llvm dialect（以便
 
 ### 2.2. Short Introduction to MLIR
 
-![x1](./img_CodeGenerationInMLIR/x1.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/x1.png" alt="x1" style="width: 90%;"></div>
 
 MLIR 基础设施建立在 LLVM IR 的成功之上，同时提供前所未有的可扩展性。MLIR 有一组开放的、易于扩展的指令，称为operations ，通常代表程序的动态语义。操作可以表示任何东西，从硬件指令，甚至硬件本身，到机器学习模型的构建块，例如层或块。它们定义和使用值，这些值代表 SSA 形式的不可变数据单元。compile-time knowledge about values 在**types**中捕获，the knowledge about operations在**attributes**中捕获。属性和类型系统同样是开放和可扩展的。IR 对象可以逻辑地组合在库中，称为dialect
 
-![image-213](./img_CodeGenerationInMLIR/image-213.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/image-213.png" alt="image-213" style="width: 90%;"></div>
 
 除了编译器传递基础结构等通用组件外，MLIR 还提供了管理其可扩展性的工具。
 
@@ -169,9 +169,9 @@ MLIR 基础设施建立在 LLVM IR 的成功之上，同时提供前所未有的
 
 ### 2.4. Lower-level Dialects: Producing LLVM IR and Binaries
 
-![MLIRtoLLVM](./img_CodeGenerationInMLIR/MLIRtoLLVM.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/MLIRtoLLVM.png" alt="MLIRtoLLVM" style="width: 90%;"></div>
 
-![MLIRtoLLVMandIntrinsics](./img_CodeGenerationInMLIR/MLIRtoLLVMandIntrinsics.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/MLIRtoLLVMandIntrinsics.png" alt="MLIRtoLLVMandIntrinsics" style="width: 90%;"></div>
 
 在转换过程结束时，MLIR 生成多个编译路径通用的低级dialect。LLVM Dialect与LLVM IR非常相似。上图是使用MLIR模块生成LLVM IR和二进制文件。这样的流程依赖于依赖 LLVM 编译器来执行常见的中端和后端优化，但一些性能关键场景需要对发出的特定硬件指令提供更强有力的保证。因此 MLIR 提供了一些低级平台特定的方言：nvvm、rocdl、x86vector、arm_neon、arm_sve、amx等。
 
@@ -187,7 +187,7 @@ MLIR 基础设施建立在 LLVM IR 的成功之上，同时提供前所未有的
 
 tiling操作引入了scf.for loops以及sub-set操作(tensor.extract_slice和tensor.insert_slice)来访问tiled data Figure。**tiling操作的本身是linalg.conv_1d_nwc_wcf对tiled subsets进行操作**。
 
-![截屏2022-12-13 14.54.32](./img_CodeGenerationInMLIR/截屏2022-12-13 14.54.32.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2022-12-13 14.54.32.png" alt="截屏2022-12-13 14.54.32" style="width: 90%;"></div>
 
 密集子集的derivation是通过 对每个tensor的索引函数 计算迭代域的图像来获得的(computing the image of the iteration domain by the indexing function for each tensor)。非密集迭代域和子集需要 IR 扩展和检查器-执行器 (extensions and inspector-executor)。
 
@@ -203,7 +203,7 @@ tiling操作引入了scf.for loops以及sub-set操作(tensor.extract_slice和ten
 
 下图是对tiled operation进行padding以获得一个固定大小的tensor
 
-![截屏2022-12-13 22.23.23](./img_CodeGenerationInMLIR/截屏2022-12-13 22.23.23.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2022-12-13 22.23.23.png" alt="截屏2022-12-13 22.23.23" style="width: 90%;"></div>
 
 (3) 转向显式屏蔽(explicit masking)的表示，但这种方法不会在本文中进一步讨论。
 
@@ -227,7 +227,7 @@ tiling操作引入了scf.for loops以及sub-set操作(tensor.extract_slice和ten
 
 **在tiling和padding之后，卷积的操作数变成静态整型了，利于vectorization的进行**，如下图(对固定大小的张量操作可以直接向量化)。在当前的IR中，只有两种操作需要vectorized：`tensor.pad`和`linalg.conv1d_nwc_wcf。`
 
-![截屏2022-12-14 16.52.45](./img_CodeGenerationInMLIR/截屏2022-12-14 16.52.45.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2022-12-14 16.52.45.png" alt="截屏2022-12-14 16.52.45" style="width: 90%;"></div>
 
 - tensor.pad
 
@@ -264,9 +264,9 @@ buffers要尽可能地in-place reuse和update。当程序转化导致意外alloc
 
 > in-place：
 >
-> ![img](./img_CodeGenerationInMLIR/inplace-op.png)
+> <div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/inplace-op.png" alt="img" style="width: 90%;"></div>
 
-![截屏2022-12-15 11.47.39](./img_CodeGenerationInMLIR/截屏2022-12-15 11.47.39.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2022-12-15 11.47.39.png" alt="截屏2022-12-15 11.47.39" style="width: 90%;"></div>
 
 (左侧：输出张量参数，以destination-passing方式 与操作结果相关联。右侧：先读后写冲突示例。)
 
@@ -280,7 +280,7 @@ buffers要尽可能地in-place reuse和update。当程序转化导致意外alloc
 
 基本原理源自first principles when composing structured operations with scf.for。scf.for会产生一个值，因此**其嵌套区域必须产生fully defined的张量**而不是任意subset。由于嵌套操作通常应用于tensor subset——通常由linalg tiling transformation产生——通常会注入一对匹配的extract_slice / insert_slice操作。这些操作都会耗它们的tensor参数（意味着这些tensor参数不能有任何后续使用），这使它们成为 ideal **candidates** for in-place bufferization。见下图示例：(Bufferization将tensor value分配给buffer)
 
-![截屏2022-12-16 14.16.10](./img_CodeGenerationInMLIR/截屏2022-12-16 14.16.10.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2022-12-16 14.16.10.png" alt="截屏2022-12-16 14.16.10" style="width: 90%;"></div>
 
 启发式的缓冲设计：**选择缓冲区时不考虑其他操作数。对于张量结果没有潜在别名 OpOperand 的操作总是分配一个新缓冲区，将其简化为对 use-def 链的分析。**这也需要upstream compilation passes负责以destination-passing style重写 IR。
 
@@ -306,7 +306,7 @@ bufferization是可定制的，主要通过两个主要的扩展机制适应不�
 
 ### 3.5. Progressive Lowering of Multidimensional Vector Operations Towards LLVM
 
-![截屏2022-12-21 18.42.21](./img_CodeGenerationInMLIR/截屏2022-12-21 18.42.21.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2022-12-21 18.42.21.png" alt="截屏2022-12-21 18.42.21" style="width: 90%;"></div>
 
 (*vector* dialect被逐步lower到更简单的一维vector上。低级vector操作需要常量索引，并通过展开外部维度来生成。)
 
@@ -314,7 +314,7 @@ bufferization是可定制的，主要通过两个主要的扩展机制适应不�
 
 LLVM Dialect IR包含loops around buffers containing multi-dimensional vectors and operations on those。这时候已经接近LLVM的 C + vector 范式，除了我们对多维向量进行操作，而 LLVM 只有一维向量。
 
-![截屏2022-12-21 18.54.30](./img_CodeGenerationInMLIR/截屏2022-12-21 18.54.30.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2022-12-21 18.54.30.png" alt="截屏2022-12-21 18.54.30" style="width: 90%;"></div>
 
 上图中表示矩阵乘积的*vector* dialect操作 逐步lower：
 
@@ -374,7 +374,7 @@ IR 重写的基本单元包含比循环更多的 IR 多样性，以及数据类�
 
 下表中是当前可以使用的一些transformation
 
-![截屏2023-01-09 17.47.49](./img_CodeGenerationInMLIR/截屏2023-01-09 17.47.49.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2023-01-09 17.47.49.png" alt="截屏2023-01-09 17.47.49" style="width: 90%;"></div>
 
 区分内存绑定和计算绑定内核。受内存限制的内核会移动和重新排序数据，以匹配计算强度更高的操作的访问模式。
 
@@ -384,23 +384,23 @@ IR 重写的基本单元包含比循环更多的 IR 多样性，以及数据类�
 
 针对上面两种基准测试，我们手动导出5个编译器策略，在每种情况下都手动设计一些寄存块大小，L1 驻留内核的性能很高。然后我们固定图块大小并在5个编译器策略选择性能最优的。
 
-然后本文分别测试了L1、L2、L3 cache中 带宽受限内核在合适的情况下表现出的内存带宽。![截屏2023-01-09 17.56.53](./img_CodeGenerationInMLIR/截屏2023-01-09 17.56.53.png)
+然后本文分别测试了L1、L2、L3 cache中 带宽受限内核在合适的情况下表现出的内存带宽。<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2023-01-09 17.56.53.png" alt="截屏2023-01-09 17.56.53" style="width: 90%;"></div>
 
-![截屏2023-01-09 17.57.09](./img_CodeGenerationInMLIR/截屏2023-01-09 17.57.09.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2023-01-09 17.57.09.png" alt="截屏2023-01-09 17.57.09" style="width: 90%;"></div>
 
-![截屏2023-01-09 17.57.25](./img_CodeGenerationInMLIR/截屏2023-01-09 17.57.25.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2023-01-09 17.57.25.png" alt="截屏2023-01-09 17.57.25" style="width: 90%;"></div>
 
 矩阵乘法：不同存储布局和问题大小的矩阵乘法计算吞吐量
 
-![截屏2023-01-09 17.59.03](./img_CodeGenerationInMLIR/截屏2023-01-09 17.59.03.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2023-01-09 17.59.03.png" alt="截屏2023-01-09 17.59.03" style="width: 90%;"></div>
 
 一维卷积
 
-![截屏2023-01-09 18.00.04](./img_CodeGenerationInMLIR/截屏2023-01-09 18.00.04.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2023-01-09 18.00.04.png" alt="截屏2023-01-09 18.00.04" style="width: 90%;"></div>
 
 二维卷积
 
-![截屏2023-01-09 18.00.43](./img_CodeGenerationInMLIR/截屏2023-01-09 18.00.43.png)
+<div style="text-align: center;"><img src="./img_CodeGenerationInMLIR/截屏2023-01-09 18.00.43.png" alt="截屏2023-01-09 18.00.43" style="width: 90%;"></div>
 
 ## 5. RELATED WORK
 

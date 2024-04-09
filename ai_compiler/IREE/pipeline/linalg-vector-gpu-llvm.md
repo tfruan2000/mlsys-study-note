@@ -9,7 +9,7 @@ Available Dialects: affine, arith, arm_neon, bufferization, builtin, cf, check, 
 
 ## 1、相关参数
 
-![Untitled](./img_linalg-vector-gpu-llvm/Untitled.png)
+<div style="text-align: center;"><img src="./img_linalg-vector-gpu-llvm/Untitled.png" alt="Untitled" style="width: 90%;"></div>
 
 所使用的命令行参数如下：
 
@@ -499,7 +499,7 @@ mhlo dialect —> linalg-on-tensor —> linalg-on-buffer —> vector dialect —
 | vector—>gpu                        | --iree-llvmgpu-vector-to-gpu  或 --iree-spirv-vector-to-gpu-subgroup-mma-ops | Pass to convert vector to gpu                                |
 | gpu—>llvm                          | --iree-convert-to-nvvm                                       | Perform final conversion from builtin/GPU/HAL/standard dialect to LLVM and NVVM dialects |
 
-![Untitled](./img_linalg-vector-gpu-llvm/Untitled%201.png)
+<div style="text-align: center;"><img src="./img_linalg-vector-gpu-llvm/Untitled%201.png" alt="Untitled" style="width: 90%;"></div>
 
 - tensor是不可变的 (immutable)、不可分割的 (integral) 个体，并且不具有 side effect。 张量的 SSA def-use chain 可以用于数据流的分析。针对张量的转换因此比较简单。
 - Buffer 是可变的 (mutable)、可 alias 的；buffer 上的转换通常需要比较复杂的依赖分析 (dependency analysis) 和别名分析 (alias analysis)。

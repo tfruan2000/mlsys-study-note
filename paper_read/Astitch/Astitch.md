@@ -33,7 +33,7 @@
 
 一方面，新Model中，访存密集型运算占kernel执行时间和使用kernel数目占比大幅高于计算密集型运算。
 
-![image-20221128113128495](./img_Astitch/image-20221128113128495.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221128113128495.png" alt="image-20221128113128495" style="width: 90%;"></div>
 
 另一方面，新硬件的算力提升速度高于访存带宽提升速让算力有了急剧的提升。
 
@@ -45,7 +45,7 @@
 
 计算图以计算密集型算子为界，形成了大量的子图。子图由访存密集型算子构成。
 
-![image-20221128113426967](./img_Astitch/image-20221128113426967.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221128113426967.png" alt="image-20221128113426967" style="width: 90%;"></div>
 
 访存密集型算子带来的性能开销主要在于
 
@@ -73,7 +73,7 @@ irregular tensor shapes $\rightarrow$ poor parallelism
 
 然后作者解释了"stitching"的含义，stitching代表了作者提出的这种更高级的fusion技术，可以理解为 算子通过层次化的存储媒介“缝合”在一起，直观上看比以往的fusion有更大的fusion范围。
 
-![image-20221128115126772](./img_Astitch/image-20221128115126772.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221128115126772.png" alt="image-20221128115126772" style="width: 90%;"></div>
 
 上图中可以看到，XLA和TVM的fusion粒度较小，按照前面划分的子图fusion；而Astitch使用share memory支持算子之间的数据传输，加大了fusion粒度。
 
@@ -96,11 +96,11 @@ irregular tensor shapes $\rightarrow$ poor parallelism
 
 作者提出，在大多数ML模型中，计算密集型算子是相互隔离的，以它们为界可以将整个图分成很多子图，子图里都是访存密集型的算子。
 
-![image-20221128113426967](./img_Astitch/image-20221128113426967.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221128113426967.png" alt="image-20221128113426967" style="width: 90%;"></div>
 
 在访存密集型的算子里，有两种算子占了主体：element-wise和reduce。
 
-![image-20221128125650543](./img_Astitch/image-20221128125650543.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221128125650543.png" alt="image-20221128125650543" style="width: 90%;"></div>
 
 上图中的broadcast也算element-wise算子。reduce op（用来减小输入tensor的维度）包括两类，row-reduce和column-reduce。
 
@@ -130,11 +130,11 @@ TVM和XLA能如何fuse，取决于提前设定的pattern（这些框架的fusion
 
 element level依赖关系消费者处理的每个element和生产者生产的每个element之间的依赖关系，比如Broadcast算子会生成一对多的数据依赖关系。
 
-![image-20221128125650543](./img_Astitch/image-20221128125650543.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221128125650543.png" alt="image-20221128125650543" style="width: 90%;"></div>
 
 operator level依赖关系就是子图的网络拓扑结构，描述了子图中算子间的依赖关系。例如下图中的B和C 需要 A的输出 作为输入。
 
-![image-20221128131909434](./img_Astitch/image-20221128131909434.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221128131909434.png" alt="image-20221128131909434" style="width: 90%;"></div>
 
 
 
@@ -184,7 +184,7 @@ operator level依赖关系就是子图的网络拓扑结构，描述了子图中
 
 下图中，图a是线程块较小时，每个EU未满载，图b是线程块较少，大量EU未使用，这都会导致严重的硬件利用率不足。
 
-![image-20221128143319632](./img_Astitch/image-20221128143319632.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221128143319632.png" alt="image-20221128143319632" style="width: 90%;"></div>
 
 因此我们需要更好的compiler，应对不同的tensor shape来自动生成thread mapping策略。
 
@@ -208,7 +208,7 @@ irregular tensor shapes $\rightarrow$ poor parallelism $\rightarrow$ adaptive th
 
 同时考虑硬件存储层次和并行度，作者将stitch策略抽象为四种：无依赖（Independent）、本地的（Local）、区域的（Regional）和全局的（Global）。
 
-![image-20221128145444483](./img_Astitch/image-20221128145444483.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221128145444483.png" alt="image-20221128145444483" style="width: 90%;"></div>
 
 TVM、XLA所支持的是Local策略，只支持通过寄存器传递数据，算子的并行策略被分开来考虑。一些Fusion工作可以支持Independent依赖，主要包括Kernel Packing等。
 
@@ -299,7 +299,7 @@ Observation-B: reduce ops和expensive element-wise ops followed by broadcast都�
 
 基于4.2节中的两个observation，团队设计出的jit compiler能够自动为每个op决定stitching策略和thread mapping。下图说明了编译器自动化的三步。
 
-![image-20221128224708418](./img_Astitch/image-20221128224708418.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221128224708418.png" alt="image-20221128224708418" style="width: 90%;"></div>
 
 1.  Step 1: dominant identification and op grouping. 这里的dominant op指的就是那些决定了别的op thread mapping的op。reduce ops和expensive element-wise ops followed by broadcast作为每一个组的dominant op候选者（AStitch总是选一个dominant，而且偏向选reduce op，其他候选者作为sub-dominat），每个dominant的直接的或间接的producer被分到其对应的组中。
 2.  Step 2: adaptive thread mapping and schedule propagation. 利用adaptive thread mapping技术决定dominant op的thread mapping。**组内的数据传播都是通过Local策略进行**，dominant生成自己的并行策略schedule后，传播给组内的其他算子。
@@ -327,7 +327,7 @@ global barrier（见3.2节 第三点Global Barrier）需要精确控制block的�
 
 ## 5 IMPLEMENTATION
 
-![image-20221129103644172](./img_Astitch/image-20221129103644172.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221129103644172.png" alt="image-20221129103644172" style="width: 90%;"></div>
 
 AStitch内部版本是基于XLA开发的，它保留了 XLA 的所有优化，除了融合策略和代码生成过程。它利用TensorFlow的custom graph pass API 重写计算图并为stitching操作生成GPU代码。其中的功能正在逐步porting到BladeDISC中。
 
@@ -337,7 +337,7 @@ AStitch内部版本是基于XLA开发的，它保留了 XLA 的所有优化，�
 
 下图的端到端编译的加速比
 
-![image-20221129104739007](./img_Astitch/image-20221129104739007.png)
+<div style="text-align: center;"><img src="./img_Astitch/image-20221129104739007.png" alt="image-20221129104739007" style="width: 90%;"></div>
 
 （其他没细看）
 

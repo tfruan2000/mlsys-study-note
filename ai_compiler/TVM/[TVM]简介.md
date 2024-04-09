@@ -1,6 +1,6 @@
 # TVM
 
-![TVMSoftwareStack](./img_简介/TVMSoftwareStack.png)
+<div style="text-align: center;"><img src="./img_简介/TVMSoftwareStack.png" alt="TVMSoftwareStack" style="width: 90%;"></div>
 
 ## 1. TVM 简介
 
@@ -19,7 +19,7 @@ TVM是一个`端到端`的机器学习编译框架，它的目标是==优化机�
 
 ### 1.3 基本步骤
 
-![TVMflow](./img_简介/TVMflow.png)
+<div style="text-align: center;"><img src="./img_简介/TVMflow.png" alt="TVMflow" style="width: 90%;"></div>
 
 \1. **导入其他框架的模型**
 

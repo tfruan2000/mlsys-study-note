@@ -411,7 +411,7 @@ if __name__ == "__main__":
 
 测试结果
 
-![Untitled](./img_matmul性能测试/Untitled.png)
+<div style="text-align: center;"><img src="./img_matmul性能测试/Untitled.png" alt="Untitled" style="width: 90%;"></div>
 
 ## 3. 使用 google benchmark 测试
 

@@ -89,6 +89,6 @@ tensor到buffer的转换是通过bufferization完成
 
 5.
 
-![MLIR代码生成流程](./img_linalg/73613904-2f720a00-45c8-11ea-8265-1c856c02525b.png)
+<div style="text-align: center;"><img src="./img_linalg/73613904-2f720a00-45c8-11ea-8265-1c856c02525b.png" alt="MLIR代码生成流程" style="width: 90%;"></div>
 
-![MLIR CodeGen Dialect Hierarchy](./img_linalg/codegen-dialect-hierarchy.svg)
+<div style="text-align: center;"><img src="./img_linalg/codegen-dialect-hierarchy.svg" alt="MLIR CodeGen Dialect Hierarchy" style="width: 90%;"></div>

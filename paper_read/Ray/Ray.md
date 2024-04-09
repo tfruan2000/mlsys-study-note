@@ -26,13 +26,13 @@
 Spark：静态的编排和优化+中心化的调度，利于执行优化和资源利用。
 Ray：动态编排（表面上是分布式RPC框架，但是多个RPC调用其实是形成了一张动态图）+树状的递归调度（去中心化和中心化结合的调度），利于灵活的编程以及低时延的调度。
 
-![Untitled](img_Ray/Untitled.jpeg)
+<div style="text-align: center;"><img src="img_Ray/Untitled.jpeg" alt="Untitled" style="width: 90%;"></div>
 
 GCS 作为集中的服务端，是 Worker 之间传递消息的纽带。每个 Server 都有一个共用的 Object Store，也就是用 Apache Arrow/Plasma 构建的内存数据。 Local Scheduler 是 Server 内部的调度，同时通过 GCS 来和其他 Server 上的 Worker 通信。Object Store 时间也有通信，作用是传递 Worker 之间的数据。
 
 一个典型的远程调用流程：
 
-![Untitled](img_Ray/Untitled.png)
+<div style="text-align: center;"><img src="img_Ray/Untitled.png" alt="Untitled" style="width: 90%;"></div>
 
 可以看到，GCS 储存了代码、输入参数、返回值。Worker 通过 Local Scheduler 来和 GCS 通信。Local Scheduler 就是 Raylet， 是单机上的基础调度服务
 

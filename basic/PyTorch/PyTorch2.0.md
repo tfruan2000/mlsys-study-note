@@ -2,7 +2,7 @@
 
 DL framework三种运行加速
 
-![Untitled](PyTorch2%200%205cd6be82123c423cb7658c65a754283f/Untitled.png)
+<div style="text-align: center;"><img src="PyTorch2%200%205cd6be82123c423cb7658c65a754283f/Untitled.png" alt="Untitled" style="width: 90%;"></div>
 
 Torch Compiler分3步
 
@@ -10,7 +10,7 @@ Torch Compiler分3步
 2. Graph Lowering: ATen / Prim IR
 3. Graph Compilation: TorchInductor
 
-![Untitled](PyTorch2%200%205cd6be82123c423cb7658c65a754283f/Untitled%201.png)
+<div style="text-align: center;"><img src="PyTorch2%200%205cd6be82123c423cb7658c65a754283f/Untitled%201.png" alt="Untitled" style="width: 90%;"></div>
 
 TorchInductor分为四层，三大核心技术
 
@@ -20,7 +20,7 @@ TorchInductor分为四层，三大核心技术
 
 AOTInductor = torch.export (whole graph capture) + Inductor (AOT compilation)
 
-![Untitled](PyTorch2%200%205cd6be82123c423cb7658c65a754283f/Untitled%202.png)
+<div style="text-align: center;"><img src="PyTorch2%200%205cd6be82123c423cb7658c65a754283f/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
 
 Dynamo 的 2 个精髓：
 
@@ -29,4 +29,4 @@ Dynamo 的 2 个精髓：
 
 三种模式
 
-![Untitled](PyTorch2%200%205cd6be82123c423cb7658c65a754283f/Untitled%203.png)
+<div style="text-align: center;"><img src="PyTorch2%200%205cd6be82123c423cb7658c65a754283f/Untitled%203.png" alt="Untitled" style="width: 90%;"></div>

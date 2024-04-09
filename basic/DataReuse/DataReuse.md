@@ -52,13 +52,13 @@ for i = 1 : Ho
 
 根据Roofline模型很容易解释第一点原因。Roofline模型是一种面向吞吐量的性能评价模型，它指出在理想情况下，处理器性能的理论上界。如下图（Ref. [CS217_Lec6](https://cs217.stanford.edu/)）所示，**在数据复用不高的情况下，峰值性能受限于内存**（Memory-bound）。
 
-![Untitled](./img_data_reuse/Untitled.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled.png" alt="Untitled" style="width: 90%;"></div>
 
 \2. 利用数据复用**可以降低内存访问，降低功耗**
 
 访问不同存储的归一化能耗比可以解释第二点原因。充分利用数据复用，使得访存多发生在RF等靠近ALU的存储上，可以极大降低功耗。
 
-![Untitled](./img_data_reuse/Untitled%201.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%201.png" alt="Untitled" style="width: 90%;"></div>
 
 \3. 广义来看，卷积中规则的数据复用，可以**降低处理器设计中缓存/控制逻辑的设计复杂度**，提高总体的性能
 
@@ -79,7 +79,7 @@ for i = 1 : m
 
 可见矩阵乘法的形式类似于卷积。实际上，针对三维的Tensor进行展开（即将第一节卷积计算中的六层循环的内三层进行合并），很容易将卷积计算转化为矩阵乘法计算(im2col)。 其中一种展开方式如下图 （Ref. [CS217_Lec9](https://cs217.stanford.edu/)）
 
-![Untitled](./img_data_reuse/Untitled%202.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
 
 卷积计算等价为矩阵乘法计算；而卷积计算中的数据复用关系等价为了矩阵计算中的数据复用关系。矩阵-矩阵乘的复杂度如下所示
 
@@ -92,7 +92,7 @@ for i = 1 : m
 - 处理器的存储是分层设计的，越靠近计算的单元，带宽越大，容量越小
 - Roofline模型和访存的带宽有关，如下图所示
 
-![Untitled](./img_data_reuse/Untitled%203.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%203.png" alt="Untitled" style="width: 90%;"></div>
 
 如果矩阵存储在内存中（DDR）,直接按三层循环进行矩阵计算，那么每个周期需要访问*𝑎*, *𝑏*, *𝑐*三个数，此时性能会受**限于DDR带宽**。将矩阵放在片上的Cache中是一个好的选择，但是片上Cache的容量往往较小。解决这一个矛盾的方法是对大的矩阵进行分块，此时矩阵计算可以表示为
 
@@ -124,7 +124,7 @@ $(𝑓∗𝑔)[𝑛]=\sum^{∞}_{m=-∞}𝑓[𝑚]𝑔[𝑛−𝑚]$
 $𝑦[𝑛]=\sum^{N}_{i=0}𝑏_𝑖⋅𝑥[𝑛−𝑖]$
 一维的脉动阵列FIR滤波器的一种实现方式，其实现结构如下图，采用这种结构，**每输入一个*x*[*n*]，就能计算得到一个*y*[*n*]。**这种特殊的数据复用是根据卷积计算的特殊性质得到的。
 
-![Untitled](./img_data_reuse/Untitled.jpeg)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled.jpeg" alt="Untitled" style="width: 90%;"></div>
 
 在卷积神经网络中，卷积层的计算一般也存在这种数据复用关系（除kernelsize <= stide情况外）。如果能用好这一特性，不再将卷积转化为矩阵乘法，**直接计算卷积**，能获得更高的性能。为了达到这一目标，和分析矩阵乘法类似，对卷积的六层循环进行分析
 
@@ -147,7 +147,7 @@ for i = 1 : Ho
 
 完成调整之后，**对卷积计算进行分块**
 
-![Untitled](./img_data_reuse/Untitled%204.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%204.png" alt="Untitled" style="width: 90%;"></div>
 
 为了进一步提高访存的效率，Input/Ouput/Filter在内存中的排布方式也需要进行相应的调整，此处不再描述。
 
@@ -169,11 +169,11 @@ for i = 1 : Ho
 
 其中，Nvidia的每个Tensor Core是一个4 × 4 × 4 的MAC阵列。计算*C* = *AB* + *C*时，矩阵*A*, *B* 中的元素广播到4个不同的MAC上，同时每个四个乘法的结构累加到一起，如下图所示（Ref.[Volta Tensor Core GPU Achieves New AI Performance Milestones](https://devblogs.nvidia.com/tensor-core-ai-performance-milestones/)）
 
-![Untitled](./img_data_reuse/Untitled%205.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%205.png" alt="Untitled" style="width: 90%;"></div>
 
 Nvidia Volta架构中，Tensor Core仅仅只是一个特殊的计算单元，其地位和FP计算单元一致。
 
-![Untitled](./img_data_reuse/Untitled%206.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%206.png" alt="Untitled" style="width: 90%;"></div>
 
 为了保证计算单元之外设计的统一性，送入计算单元的数据位宽完全一致，和普通的FP32计算单元比，**Tensor Core在算力上有很大的优势**。由下表可以看出，由于数据复用和精度的降低，Tesnor Core的理论性能是FP32的8倍（同频，其中两倍受益于精度的降低）。
 
@@ -186,11 +186,11 @@ Nvidia Volta架构中，Tensor Core仅仅只是一个特殊的计算单元，其
 
 达芬奇中的CUBE Core是一个16×16×1616×16×16的MAC阵列（以Davinci Max为例），如下图所示（hotchips31），具有更高的数据复用关系。
 
-![Untitled](./img_data_reuse/Untitled%207.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%207.png" alt="Untitled" style="width: 90%;"></div>
 
 Davinci Core进行了更多的设计，配合完成高性能的卷积计算。MTE中的img2col表明其进行了3D Tensor到Matrix的转换。(Ref. [华为在hotchips详细介绍了达芬奇架构](https://www.jiqizhixin.com/articles/2019-08-20-4))
 
-![Untitled](./img_data_reuse/Untitled%201.jpeg)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%201.jpeg" alt="Untitled" style="width: 90%;"></div>
 
 前文提到“卷积即矩阵乘法的设计思路无法达到峰值性能”，但有了**硬件架构的联合设计**，这一结论不再成立。譬如在Davinci Core中，在L0 Buffer进行Img2col可以降低由于im2col增加的访存带宽，合理设计的L0 BufferA/B/C也能应对卷积操作中大量的中间结果。
 
@@ -198,7 +198,7 @@ Davinci Core进行了更多的设计，配合完成高性能的卷积计算。MT
 
 脉动阵列的典型代表是Google TPU，Google TPU中设计的脉动阵列也是针对矩阵乘法设计（虽然有的脉动阵列也可直接计算卷积，但TPU并没有采用这一类设计）。**Google TPU的其计算核心为一个256 × 256的二维脉动阵列**，如下图所示。
 
-![Untitled](./img_data_reuse/Untitled%208.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%208.png" alt="Untitled" style="width: 90%;"></div>
 
 ### 3.3 直接卷积加速器
 
@@ -209,11 +209,11 @@ Eyeriss是一种直接针对卷积计算优化的加速器，和其他加速器�
 
 由于卷积神经网络计算卷积时C方向的特殊性，Convolution Reuse仅在H和W方向存在。以kernelsiz=3，stride=1为例，卷积计算中row方向的数据复用如下图
 
-![Untitled](./img_data_reuse/Untitled%209.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%209.png" alt="Untitled" style="width: 90%;"></div>
 
 此时ifmap中的元素3被利用了三次，只需要从存储中访问一次元素3，就能完成3次计算。当扩展为二维时，有
 
-![Untitled](./img_data_reuse/Untitled%2010.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%2010.png" alt="Untitled" style="width: 90%;"></div>
 
 即ifmap的row方向在不同PE之间进行复用；而实际上ifmap的col方向的数据会暂存在PE内的RF上，col方向的数据也在RF上进行复用。
 
@@ -268,11 +268,11 @@ Output:$Ci$ |
 
 上述的几乎所有的讨论和设计，都能归结到降低数据带宽上。一旦数据带宽降低后，其灵活性就受到了很大的限制，这是无法计算GEMV的原因之一。如果需要加速器能够在各种情况下有良好的表现，最直接的解决方案就是在设计上提供高的带宽和灵活性。 Eyeriss V2就采用这种思路对Eyeriss V1进行改进，以高效支持MobileNet。为了提供高带宽，Eyeriss设计了层次化2D Mesh的Noc
 
-![Untitled](./img_data_reuse/Untitled%2011.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%2011.png" alt="Untitled" style="width: 90%;"></div>
 
 设计中一个PE Cluster具有12个PE，12个PE之间互相连接；PE Cluster通过一个2D Mesh进行互联。Global Buffer到PE之间具有丰富的连线，在不同计算模式下可以以Multicast，broadcast和unicast进行数据传输，充分满足不同计算下的数据需求。
 
-![Untitled](./img_data_reuse/Untitled%2012.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%2012.png" alt="Untitled" style="width: 90%;"></div>
 
 尽管Eyeriss V2中并没有提到可重构，但其Noc在计算不同网络时有不同的选通路径，和可重构的思想一致。一般谈到硬件可重构，一般会想到FPGA（Field－Programmable Gate Array，现场可编程大规模逻辑门阵列）。通过FPGA片上丰富的的互联结构和查找表，FPGA理论上可以用于实现各种形式的电路。
 
@@ -281,11 +281,11 @@ FPGA可以创造出各种可能，但FPGA设计上有很多冗余，在布局布
 > Ref: Prabhakar R, Zhang Y, Koeplinger D, et al. Plasticine: A Reconfigurable Architecture For Parallel Paterns[C]// Acm/ieee International Symposium on Computer Architecture. 2017.
 > 
 
-![Untitled](./img_data_reuse/Untitled%2013.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%2013.png" alt="Untitled" style="width: 90%;"></div>
 
 多个PCU之间通过交换网络和其他PCU及PMU（Memory）相连，可以配合完成不同的操作。这些都以增加片上各个单元之间的互联性为基础。
 
-![Untitled](./img_data_reuse/Untitled%2014.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%2014.png" alt="Untitled" style="width: 90%;"></div>
 
 采用可重构设计的还有清华大学微电子系设计的Thinker芯片，具体可参考A High Energy Efficient Reconfigurable Hybrid Neural Network Processor for Deep Learning Applications。这样的具有灵活互联结构的可重构加速器，可以支持矩阵-矩阵乘法，矩阵-向量乘法以及更多的其他计算，具有较强的灵活性。
 
@@ -293,7 +293,7 @@ FPGA可以创造出各种可能，但FPGA设计上有很多冗余，在布局布
 
 另一种思路是对某些运算做到极致的支持，其他的运算通过CPU或者其他的Core来计算；从华为达芬奇架构，到Google TPU2/3的设计上，都有的体现，华为的达芬奇架构可参见3.1节，Google V2/3的框图如下
 
-![Untitled](./img_data_reuse/Untitled%2015.png)
+<div style="text-align: center;"><img src="./img_data_reuse/Untitled%2015.png" alt="Untitled" style="width: 90%;"></div>
 
 Google的框图并没有透露太多的细节，仅仅表面TPU中由于MXU和scalar/vector units；华为的达芬奇架构则指出了
 

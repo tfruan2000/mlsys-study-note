@@ -4,7 +4,7 @@
 
 ## 1. 传统的编译器架构
 
-![img](./img_LLVM简介/webp-1664801155586-3.webp)
+<div style="text-align: center;"><img src="./img_LLVM简介/webp-1664801155586-3.webp" alt="img" style="width: 90%;"></div>
 
 - Frontend:前端
 
@@ -20,7 +20,7 @@
 
 ## 2. LLVM架构
 
-![img](./img_LLVM简介/webp-1664801163209-6.webp)
+<div style="text-align: center;"><img src="./img_LLVM简介/webp-1664801163209-6.webp" alt="img" style="width: 90%;"></div>
 
 - 不同的前端后端使用统一的中间代码LLVM ==Intermediate Representation==(LLVM IR)
 
@@ -47,7 +47,7 @@ Clang是LLVM项目的一个子项目，是基于LLVM框架的**C/C++/Objective-C
 
 ### Clang和LLVM的关系
 
-![img](./img_LLVM简介/webp.webp)
+<div style="text-align: center;"><img src="./img_LLVM简介/webp.webp" alt="img" style="width: 90%;"></div>
 
 clang是llvm整体框架的前端
 
@@ -159,7 +159,7 @@ eof ''      Loc=<main.m:20:2>
 
 AST图形化如下显示
 
-![img](./img_LLVM简介/webp-1664802251158-9.webp)
+<div style="text-align: center;"><img src="./img_LLVM简介/webp-1664802251158-9.webp" alt="img" style="width: 90%;"></div>
 
 ### 语义分析（生成中间代码 LLVM IR）
 
@@ -199,7 +199,7 @@ define void @test(i32, i32) #2 {
  load，读取数据
  官方语法参考[LLVM Language Reference Manual — LLVM 16.0.0git documentation](https://llvm.org/docs/LangRef.html)
 
-![img](./img_LLVM简介/webp.webp)
+<div style="text-align: center;"><img src="./img_LLVM简介/webp.webp" alt="img" style="width: 90%;"></div>
 
 
 
