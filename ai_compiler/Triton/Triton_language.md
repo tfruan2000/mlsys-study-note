@@ -2,9 +2,11 @@
 
 ## cuda vs triton
 
+cuda和triton编程模式
+
 <div style="text-align: center;"><img src="./img_Triton_language/cuda_vs_triton.png" alt="cuda_vs_triton" style="width: 90%;"></div>
 
-gpu架构图如下
+gpu层次结构图如下
 
 <div style="text-align: center;"><img src="./img_Triton_language/gpu_arch.png" alt="gpu_arch" style="width: 70%;"></div>
 
@@ -12,7 +14,7 @@ gpu架构图如下
 
 <div style="text-align: center;"><img src="./img_Triton_language/triton_arch_now.png" alt="triton_arch_now" style="width: 90%;"></div>
 
-为了支持多后端
+compiler支持多后端的方向：通过Linalg dialect
 
 <div style="text-align: center;"><img src="./img_Triton_language/triton_arch.png" alt="triton_arch" style="width: 70%;"></div>
 
@@ -65,7 +67,7 @@ a.stride() # (6, 1)
 1. 超参数 `tl.constexptr` ，对于不同的硬件使用时，最佳性能的参数可能是不同的，后续由 Triton compiler 来进行搜索不同的值
 2. 虚拟循环 `pid = tl.program_id(axis=0)` ，每个kernel可能被执行多次
     1. program_id是这个虚拟的 for "循环" 里面的 index (第几次循环，实际中这些循环是并行)
-    2. `axis` , 是说明 "循环"有几层，此处 axis = 0表示展开为1维来访问（维度概念类比memref的维度，第一维相当于memref的最内维）
+    2. `axis` , 是说明 "循环"有几层，此处 axis = 0表示展开为1维来访问（维度概念类比memref的维度，第一维相当于memref的最内维u）
     
     ```python
     pid = tl.program_id(axis=0)
@@ -77,6 +79,8 @@ a.stride() # (6, 1)
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     ```
     
+    > axis是启动3d Grid的索引，必须是0 / 1 / 2
+
     c. 调用kernel时，需要说明该kernel执行循环有几层，每层有几次，这就是 `grid` 的概念
     
 3. 显示地load和store，批量数据处理，一次处理一个BLOCK_SIZE的数据，SIMD行为
@@ -336,5 +340,37 @@ In order to **avoid shared memory bank conflicts**, elements may be **swizzled
 同一个warp内的thread同时访问同一列的数据
 
 <div style="text-align: center;"><img src="./img_Triton_language/swizzled.png" alt="swizzled memory" style="width: 90%;"></div>
+
+## [auto-tuning](https://triton-lang.org/main/python-api/generated/triton.autotune.html)
+
+triton.jit 装饰的函数可以调用 `triton.autotune` 装饰器来触发自动调优。使用上需要提供一个configs列表，autotune会多次运行kernel函数来评估configs中的所有配置。（配置是人为给出的，所以空间不大，依赖人为经验）
+
+- key：参数列表，当key中的参数改变时，需要重新评估configs
+
+- prune_configs_by：用户可以传入函数来帮助减枝（例如基于性能模型的函数），加快收敛
+
+- reset_to_zero：输入参数名列表，在运行前将这些参数重置为0
+
+- warmup：每个config的warmup时间，默认25ms
+
+- rep：每个config的重复时间，默认100ns
+
+```python
+@triton.autotune(
+    configs=[
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
+        triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
+    ],
+    key=['M', 'N', 'K'],
+)
+```
+
+
 
 [http://www.giantpandacv.com/project/OneFlow/【BBuf的CUDA笔记】十三，OpenAI Triton 入门笔记一/](http://www.giantpandacv.com/project/OneFlow/%E3%80%90BBuf%E7%9A%84CUDA%E7%AC%94%E8%AE%B0%E3%80%91%E5%8D%81%E4%B8%89%EF%BC%8COpenAI%20Triton%20%E5%85%A5%E9%97%A8%E7%AC%94%E8%AE%B0%E4%B8%80/)

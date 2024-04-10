@@ -7,22 +7,12 @@
 vim ~/.condarc
 
 ```bash
-channels:
-  - https://mirrors.aliyun.com/anaconda/pkgs/free/
-  - https://mirrors.aliyun.com/anaconda/cloud/conda-forge/
-  - https://mirrors.aliyun.com/anaconda/pkgs/main/
 show_channel_urls: true
-default_channels:
-  - https://mirrors.aliyun.com/anaconda/pkgs/main
-  - https://mirrors.aliyun.com/anaconda/pkgs/r
-  - https://mirrors.aliyun.com/anaconda/pkgs/msys2
-custom_channels:
-  conda-forge: http://mirrors.aliyun.com/anaconda/cloud
-  msys2: http://mirrors.aliyun.com/anaconda/cloud
-  bioconda: http://mirrors.aliyun.com/anaconda/cloud
-  menpo: http://mirrors.aliyun.com/anaconda/cloud
-  pytorch: http://mirrors.aliyun.com/anaconda/cloud
-  simpleitk: http://mirrors.aliyun.com/anaconda/cloud
+channels:
+  - http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch/
+  - http://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/
+  - http://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/
+  - defaults
 auto_activate_base: false
 ```
 
