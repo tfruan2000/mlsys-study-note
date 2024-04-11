@@ -760,8 +760,6 @@ bool InlinerInterface::isLegalToInline(Operation *op, Region *dest,
 }
 ```
 
-
-
 ### TilingInterface
 
 对于有该interface的op可以cast成该interface `llvm::cast<TilingInterface>(op)`
@@ -779,10 +777,14 @@ if (auto intAttr = range.size.dyn_cast<Attribute>()) {
 ### MemoryEffectOpInterface
 
 - getEffects
-
 - hasEffect
 - hasNoEffect
 
+### op常用的interface
+
+#### AllocOpInterface
+
+#### ViewLikeOpInterface
 
 
 ---
@@ -1092,7 +1094,9 @@ llvm-project/mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     // CHECK-NEXT:
     // CHECK-NEXT
     ```
-  
+
+> 使用 `mlir-tblgen` 来生成 `pass.h.inc`
+> `mlir-tblgen -gen-op-defs Passes.td -o Passes.h.inc `
 
 ---
 
