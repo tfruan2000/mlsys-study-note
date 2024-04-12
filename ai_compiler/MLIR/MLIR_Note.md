@@ -89,7 +89,7 @@ struct TransposeSliceLayoutPattern : public OpRewritePattern<mhlo::SliceOp> {
 
 ## Attribute
 
-```jsx
+```cpp
 llvm-project/mlir/include/mlir/IR/Attribute.h
 ```
 
@@ -232,9 +232,21 @@ std::unique_ptr<pass> mlir::createAddOpPatPass() {
 
 ## Bufferize
 
-one-shot-bufferize（这部分来自大佬同事的笔记）
+### bufferization dialect
 
-```jsx
+bufferization：将逻辑计算语义的tensor转为物理内存语义的buffer
+
+- bufferize::AllocTensorOp
+
+申请一块空间，使用给定shape创建一个bufferize allocation。常会传入一个可选的 srcOp，表示从这个srcOp拷贝出的数据，此时就传入的 ValueRange dynamicShape就应为空。
+
+该op主要是帮助bufferization过程提供一个 `handler`，并且这样产生的alloc_tensor op没有不会产生 read-after-write 冲突，也不会alias其他buffer，可以再进行 `in-place bufferize` 
+
+### one-shot-bufferize
+
+（这部分来自大佬同事的笔记）
+
+```c++
 llvm-project/mlir/lib/Dialect/Bufferization/IR/BufferizableOpInterface.cpp
 ```
 
@@ -811,7 +823,7 @@ if (auto intAttr = range.size.dyn_cast<Attribute>()) {
     - `SmallVector<int64_t, 2>` 表示包含 `int64_t` 元素的 `SmallVector` 类型，其中 `2` 是指定的初始大小
     - 其他
       
-        ```jsx
+        ```c++
         llvm::reverse()
         llvm::to_vector()
         // SmallVector<int64_t> res{llvm::to_vector(llvm::seq((int64_t)0, size))};
@@ -865,7 +877,7 @@ Value offsetval = memrefDesc.offset(builder, loc);
 
 ## Operand
 
-```jsx
+```c++
 llvm-project/mlir/include/mlir/IR/Operation.h
 ```
 
@@ -1162,7 +1174,7 @@ region包含若干个block，一般linalgOp都包含一个region
 
 ## SideEffect
 
-```jsx
+```c++
 llvm-project/mlir/include/mlir/Interfaces/SideEffectInterfaces.h
 ```
 
@@ -1302,7 +1314,7 @@ def SubOp : ToyOp<"sub", [Pure]> {
 
 linalg transformOp
 
-```jsx
+```c++
 llvm-project/mlir/lib/Dialect/Linalg/TransformOps/LinalgTransformOps.cpp
 ```
 
@@ -1370,7 +1382,7 @@ Value 必然包含 Type，Type 也可以作为 Attribute 附加在 Operation 上
 
 ## tiling
 
-```jsx
+```c++
 llvm-project/mlir/lib/Dialect/Linalg/Transforms/Tiling.cpp
 ```
 
