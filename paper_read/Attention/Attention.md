@@ -1,8 +1,8 @@
 # Attention
 
-
-
 # Transformer
+
+推荐阅读：http://nlp.seas.harvard.edu/annotated-transformer/
 
 ```cpp
 输入序列的 token 化（文本、图像、声音）
@@ -34,31 +34,33 @@ BPE（Byte Pair Encoding）编码是一种基于数据压缩的文本编码技�
 
 （3）token通过自身在输入序列中的position计算positional encoding
 
-<div style="text-align: center;"><img src="img_Attention/Untitled.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled.png" alt="Untitled" style="width: 70%;"></div>
 
 （4）将embedding和positional encoding相加后得到transformer的输入
 
 额外：图像的token化只需要将输入图像切分（一般是16*16），再按顺序排好，加个位置编码即可输入transformer encoder
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%201.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%201.png" alt="Untitled" style="width: 70%;"></div>
 
 2. encoder
 
 主要就是attention
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%202.png" alt="Untitled" style="width: 50%;"></div>
 
 3. decoder
 
 想比encoder要多一个mask！！
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%203.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%203.png" alt="Untitled" style="width: 70%;"></div>
+
+decoder的第二个Multi-Head Attention ，它的输入有一部分来自于decoder（一个箭头），还有一部分来自于encoder（有两个箭头）。因为这个Multi-Head Attention 中 , W_Q , W_K 是从 encoder 借用来的，而W_V是自己提供的。所以在解码部分，它只需要产生W_*V矩阵。*
 
 4.output实现
 
 将结果最后经过一个linear以及softmax，最后再反查BPE编码表，获得最终的结果
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%204.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%204.png" alt="Untitled" style="width: 70%;"></div>
 
 # Attention
 
@@ -72,7 +74,7 @@ RNN→死记硬背，attention→总结
 
 attention也可以脱离encoder-decoder
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%205.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%205.png" alt="Untitled" style="width: 70%;"></div>
 
 图书馆(source)有很多书(value)，为了方便查找就给这些书取了编号(key)，当我们想要了解某件事情(query)的时候，就可以简要地了解。为了查询效率，每本书根据和事情的相关性，会计算得到一个权重
 
@@ -84,7 +86,7 @@ attention流程（计算分为三个阶段）
 
 （3）将权重和value加权
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%206.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%206.png" alt="Untitled" style="width: 70%;"></div>
 
 假设q_t就是时刻t下的query向量，K是key矩阵，k_s是其中一个key向量，V是value矩阵，我们先对q_t和每个key进行相似度计算得到一个非归一化的score分数：$s(q_t, k_s) = \frac{<q_t, k_s>}{\sqrt{d_k}}$
 
@@ -100,7 +102,7 @@ $$
 
 多种变种Soft Attention、Hard Attention、静态Attention、动态Attention、Self Attention 等等
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%207.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%207.png" alt="Untitled" style="width: 70%;"></div>
 
 下面从计算区域、所用信息、结构层次和模型等方面对Attention的形式进行归类。
 
@@ -158,7 +160,7 @@ Q的维度等于K的维度，与V的维度不一定相等
 
 最普通的一种，又叫单头注意力，计算score时使用**缩放点积，即需要除以${\sqrt{d_k}}$（**解释：对于较大的值，点积的大小变大，反向传播会将softmax函数推到具有极小梯度的区域，为了抵消这个影响，将点积进行缩放）
 
-<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-01-21_19.09.47.png" alt="截屏2024-01-21 19.09.47.png" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-01-21_19.09.47.png" alt="截屏2024-01-21 19.09.47.png" style="width: 70%;"></div>
 
 1）matmul：假设q_t就是时刻t下的query向量，K是key矩阵，k_s是其中一个key向量，V是value矩阵，$U=QK^T$
 
@@ -172,11 +174,11 @@ Q的维度等于K的维度，与V的维度不一定相等
 
 再选择output中置信度最高的一维，其值就是
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%208.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%208.png" alt="Untitled" style="width: 70%;"></div>
 
 ### multi-head attention
 
-<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-01-21_19.10.11.png" alt="截屏2024-01-21 19.10.11.png" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-01-21_19.10.11.png" alt="截屏2024-01-21 19.10.11.png" style="width: 70%;"></div>
 
 对于同样的Q、K、V计算多次attention，再把这些output连接起来得到最终的output
 
@@ -210,7 +212,7 @@ MQA 让所有的head之间 **共享** 同一份 Key 和 Value 矩阵，每个he
 
 一组group共用一组KV
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%209.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%209.png" alt="Untitled" style="width: 70%;"></div>
 
 ### self-attention
 
@@ -224,7 +226,7 @@ def forward(self, x, mask = None):
         v = torch.matmul(x, self.wv) # (batch, (4, 80) * (80, 64))
 ```
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%2010.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%2010.png" alt="Untitled" style="width: 70%;"></div>
 
 例如厨房里有苹果、青菜、西红柿、玛瑙筷子、朱砂碗，每件东西都有一个query_i，每件东西都和自己以及其他物品做一次attention计算。“苹果”的query与苹果、青菜、西红柿、玛瑙筷子、朱砂碗的key和value做注意力，得到最终输出。其他物品的query也如此操作。相当于将这5个物品换了一种表示形式，新的表示形式考虑了所有KV物品的信息。
 
@@ -245,7 +247,7 @@ def forward(self, x, mask = None):
 | 5    | 我是谁的人 | ？     | decode  |
 | 6    | …          | …      | … |
 
-<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_22.57.54.png" alt="截屏2024-03-10 22.57.54.png" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_22.57.54.png" alt="截屏2024-03-10 22.57.54.png" style="width: 70%;"></div>
 
 decoder attention中的mask：在对初始输入一个个计算时，虽然已经可见所有序列（输入为“我是谁”，在模型读“我”时，已经知道“是谁”代表的矩阵数值）。所以使用mask来舍去这部分以及未来输出长度的数据。
 
@@ -253,7 +255,7 @@ $Output = Attention \cdot V =  softmax(\frac{(QK^T)}{\sqrt{d_k}} \cdot \text{mas
 
 $QK^T$就是当前的Attention 
 
-<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_23.31.10.png" alt="截屏2024-03-10 23.31.10.png" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_23.31.10.png" alt="截屏2024-03-10 23.31.10.png" style="width: 70%;"></div>
 
 # memory-effective attention
 
@@ -275,9 +277,9 @@ $$
 
 分析attention的计算
 
-<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_17.13.41.png" alt="截屏2024-03-10 17.13.41.png" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_17.13.41.png" alt="截屏2024-03-10 17.13.41.png" style="width: 70%;"></div>
 
-<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_17.14.05.png" alt="截屏2024-03-10 17.14.05.png" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_17.14.05.png" alt="截屏2024-03-10 17.14.05.png" style="width: 70%;"></div>
 
 可见，第i+1步的计算结果相比第i步，只需要额外计算Q_{i+1}作为输入的Att_{i+1}
 
@@ -289,13 +291,13 @@ Att_i 只跟 Q_i 有关，且用到了每一步的K和V。可以利用Cache机�
 
 为什么不存Q？第i+1步比第i步的计算结果只多一个Att_i ，Att_i只跟Q_i有关，所以是KV Cache
 
-<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_17.04.41.png" alt="截屏2024-03-10 17.04.41.png" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_17.04.41.png" alt="截屏2024-03-10 17.04.41.png" style="width: 70%;"></div>
 
 第i轮token的计算结束后，KV Cache中存储了某个layer的KV分别为[K_1, K_2, …, K_i] 和[V_1, V_2, …, V_i] 
 
 KV Cache所占显存 ： 2 * batch_size * seq_len * per_head_hidden_dim * n_layers * (ElmBitWidth / 8 )
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%2011.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%2011.png" alt="Untitled" style="width: 70%;"></div>
 
 需要注意,当**sequence特别长的时候，KV Cache其实还是个Memory刺客**。
 
@@ -316,7 +318,7 @@ KV Cache所占显存 ： 2 * batch_size * seq_len * per_head_hidden_dim * n_laye
 
 **也算一种Strided Attention**
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%2013.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%2013.png" alt="Untitled" style="width: 70%;"></div>
 
 更新kv_cache时，可以把(t - windows - 1)step的kv_cache删除，保留seq = windows_size长度的seq_kv就可以
 
@@ -328,15 +330,15 @@ $$
 
 但是当上下文window移动时，cache必须重新计算（需要对KV Cache进行裁减，再拼接新的K_{i+1}，V_{i+1}）
 
-<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_17.20.42.png" alt="截屏2024-03-10 17.20.42.png" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_17.20.42.png" alt="截屏2024-03-10 17.20.42.png" style="width: 70%;"></div>
 
 但是只用window内的KV来计算会导致精度下降吗？其实也有cross-layer之间的信息传递
 
-<div style="text-align: center;"><img src="img_Attention/Untitled%2014.png" alt="Untitled" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/Untitled%2014.png" alt="Untitled" style="width: 70%;"></div>
 
 slide window attention：保留老上下文和新上下文中重叠部分的kv-cache
 
-<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_20.17.01.png" alt="截屏2024-03-10 20.17.01.png" style="width: 90%;"></div>
+<div style="text-align: center;"><img src="img_Attention/%25E6%2588%25AA%25E5%25B1%258F2024-03-10_20.17.01.png" alt="截屏2024-03-10 20.17.01.png" style="width: 70%;"></div>
 
 # FlashAttention
 

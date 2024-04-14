@@ -65,6 +65,8 @@ final 用于**防止类被继承**。当类被声明为 final，表示该类不�
 public 是 C++ 中的访问修饰符之一，用于指定类的成员的访问权限。public 成员可以被任何类或函数访问。表示继承的成员和方法在派生类中是公共的，可以被外部访问。
 - override
 override 是 C++11 引入的关键字，用于**显式地声明一个成员函数覆盖了基类的虚函数**。在这里，这样做有助于提高代码的可读性和可维护性，同时也可以帮助编译器检查函数是否正确地覆盖了基类的虚函数。
+-  volatile
+volatile 声明的类型变量表示可以被某些编译器未知的因素更改，编译器对访问该变量的代码就不再进行优化，从而可以提供对特殊地址的稳定访问
 
 ### 4. assert
 
@@ -209,7 +211,7 @@ c = 20
 
 ## 2.4 std::move
 
-std::move 用于将对象转为右值引用，常用于移动语义和避免不必要的拷贝操作
+std::move 用于将对象转为右值引用（计算完生命周期就结束，而且不会被修改，所以MLIR中的pattern传入applypattern函数一般使用std::move），常用于移动语义和避免不必要的拷贝操作
 
 - 移动语义：不复制对象的前提下，将内容传递给函数或赋值给另一个对象
 - 转移所有权：将一个容器的所有权转移给另一个容器
@@ -222,6 +224,34 @@ std::move 用于将对象转为右值引用，常用于移动语义和避免不�
     std::cout << "Source size: " << source.size() << std::endl; // 输出 0
     // destination 包含了原始 vector 的内容
     std::cout << "Destination size: " << destination.size() << std::endl; // 输出 5
+```
+
+实现代码：使用 `remove_reference` 擦除 T 的引用类型，从而保证该函数返回的一定是右值引用
+
+```c++
+template <class _Tp>
+_LIBCPP_NODISCARD_EXT inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR __libcpp_remove_reference_t<_Tp>&&
+move(_LIBCPP_LIFETIMEBOUND _Tp&& __t) _NOEXCEPT {
+  typedef _LIBCPP_NODEBUG __libcpp_remove_reference_t<_Tp> _Up;
+  return static_cast<_Up&&>(__t);
+}
+```
+
+
+
+## 2.5 std::forward
+
+std::move和std::forward都是执行强制转换的函数。std::move 是无条件将实参转换成右值， std::forward 则仅在某个特定条件满足时执行同一个强制转换
+
+实现代码：当传入值为右值引用时才执行向右值类型的强制类型转换
+
+```cpp
+template <class _Tp>
+_LIBCPP_NODISCARD_EXT inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR _Tp&&
+forward(_LIBCPP_LIFETIMEBOUND __libcpp_remove_reference_t<_Tp>&& __t) _NOEXCEPT {
+  static_assert(!is_lvalue_reference<_Tp>::value, "cannot forward an rvalue as an lvalue");
+  return static_cast<_Tp&&>(__t);
+}
 ```
 
 ## **3. 类和对象**

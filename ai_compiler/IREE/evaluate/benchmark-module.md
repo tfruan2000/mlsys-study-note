@@ -434,46 +434,17 @@ iree-opt matmul.mlir --iree-hal-target-backends=llvm-cpu\
 # a.log == c.log
 ```
 
-## 相关源码
+下面这两个命令行是等同的，符合[IREE Pipeline](../pipeline/pipeline.md) 中的描述
 
 ```bash
-# tools/BUILD.bazel
-iree_compiler_cc_binary(
-    name = "iree-compile",
-    srcs = ["iree-compile-main.cc"],
-    tags = ["hostonly"],
-    deps = [
-        "//compiler/bindings/c:headers",
-        "//compiler/src/iree/compiler/API:Impl",
-    ],
-)
+iree-compile --iree-hal-target-backends=llvm-cpu --compile-to=hal
 
-iree_runtime_cc_binary(
-    name = "iree-run-module",
-    srcs = ["iree-run-module-main.c"],
-    deps = [
-        "//runtime/src/iree/base",
-        "//runtime/src/iree/base/internal:flags",
-        "//runtime/src/iree/hal",
-        "//runtime/src/iree/tooling:context_util",
-        "//runtime/src/iree/tooling:run_module",
-        "//runtime/src/iree/vm",
-    ],
-)
+<-->
 
-iree_runtime_cc_binary(
-    name = "iree-benchmark-module",
-    srcs = ["iree-benchmark-module-main.cc"],
-    deps = [
-        "//runtime/src/iree/base",
-        "//runtime/src/iree/base/internal:flags",
-        "//runtime/src/iree/hal",
-        "//runtime/src/iree/modules/hal:types",
-        "//runtime/src/iree/tooling:context_util",
-        "//runtime/src/iree/tooling:device_util",
-        "//runtime/src/iree/tooling:vm_util",
-        "//runtime/src/iree/vm",
-        "@com_google_benchmark//:benchmark",
-    ],
-)
+iree-opt --iree-hal-target-backends=llvm-cpu\
+  --iree-common-input-transformation-pipeline \
+  --iree-abi-transformation-pipeline \
+  --iree-flow-transformation-pipeline  \
+  --iree-stream-transformation-pipeline \
+  --iree-hal-transformation-pipeline
 ```

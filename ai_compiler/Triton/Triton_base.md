@@ -28,7 +28,7 @@ CGA（Cooperative Grid Array）：CGA是一种更高级的概念，它是一组C
 
 ## elements
 
-这里只是简单介绍修啊，详细请看 [Triton_language.md](./Triton_language.md)
+这里只是简单介绍，详细请看 [Triton_language.md](./Triton_language.md)
 
 举个🌰，vector add
 
@@ -242,8 +242,9 @@ triton compiler依赖block-level control- and data-flow analysis来静态地sche
 以Matmul而言，若A为MxK，B为KxN，那么C的大小就是MxN（M和N为parallel axis大小，K为reduction轴大小）
 
 每次分块计算，单块大小BLOCK_SIZE_M x BLOCK_SIZE_N，总共进行 
-$\frac{M}{\text{BLOCK\_{SIZE}\_{M}}} \times \frac{N}{\text{BLOCK\_{SIZE}\_{N}}}$​​次
-
+$$
+\frac{M}{\text{BLOCK\_{SIZE}\_{M}}} \times \frac{N}{\text{BLOCK\_{SIZE}\_{N}}}
+$$
 Triton中关于grid定义：
 
 ```python
@@ -283,14 +284,14 @@ num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
 num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
 ```
 
-- num_pid_in_group 代表了上图的红色框 (高是 `GROUP_SIZE_M` , 宽是 `num_pid_n`)中包含多少个黄色小块，这样一个红色框叫一个group
+- num_pid_in_group  表示一个高是 `GROUP_SIZE_M` , 宽是 `num_pid_n`的group中包含多少个黄色小块
 
 ```python
 # number of program in group
 num_pid_in_group = GROUP_SIZE_M * num_pid_n
 ```
 
-- group_id表示当前循环iter是在哪个红色框内
+- group_id表示当前循环iter是在哪个group内
 
 ```python
 # id of the group which related to this program
