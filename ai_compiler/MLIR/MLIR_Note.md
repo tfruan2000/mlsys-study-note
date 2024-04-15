@@ -798,6 +798,47 @@ if (auto intAttr = range.size.dyn_cast<Attribute>()) {
 
 #### ViewLikeOpInterface
 
+tensor.expand_shape, tensor.collapse_shape,
+memref.expand_shape, memref.collapse_shape,
+memref.view, memref.reshape, memref.reshape, memref.reinterpret_cast, memref.cast 等
+
+这些的src都是单operand，但是offset / size / stride属性是 `OperandRange`
+
+- Value getViewSource()
+
+- 判断两个view是否相同
+  ```cpp
+  static bool isSameView(ViewLikeOpInterface a, ViewLikeOpInterface b) {
+    if (a->getName() != b->getName() ||
+        a->getAttrs() != b->getAttrs() ||
+        a->getNumOperands() != b->getNumOperands()) {
+      return false;    
+    }
+    for (auto [operand1, operand2] : llvm::zip(a.getOperands(), b.getOperands())) {
+      if (operand1 == a.getViewSource() && operand2 == b.getViewSource())
+        continue;
+      if (operand1 != operand2)
+        return false;
+    }
+    return true;
+  }
+  ```
+
+#### OffsetSizeAndStrideOpInterface
+
+也属于 `ViewLikeOpInterface` ，可以通过 `llvm::cast<OffsetSizeAndStrideOpInterface>(op)` 获得
+
+- mlir::OperandRange getOffsets() / getSizes() / getStrides()
+
+- llvm::ArrayRef<int64_t> getStaticOffsets() / getStaticSizes() / getStaticStrides()
+
+- llvm::SmallVector<mlir::OpFoldResult, 4> getMixedOffsets() / getMixedSizes() / getMixedStrides()
+
+- bool isDynamicOffset(idx) / isDynamicSize(idx) / isDynamicStride(idx)
+
+- int64_t getStaticOffset(idx) / getStaticSize(idx) / getStaticStride(idx)
+
+- mlir::Value getDynamicOffset(idx) / getDynamicSize(idx) / getDynamicStride(idx)
 
 ---
 
@@ -805,24 +846,88 @@ if (auto intAttr = range.size.dyn_cast<Attribute>()) {
 
 常用
 
-- LogicalResult
-    - 函数内用 success() / failure() 作为返回
-    - 外部调用判断 succeeded / failed
-- 判断:
-    - isa : 不能在cast之后使用isa，有类似场景请用dyn_cast
-    - isa_and_nonnull ：允许op为null作为输入，返回null
-- 转换：
-    - cast ：直接转换，失败时报错
-    - cast_or_null ：允许op为null作为输入，返回null
-    - dyn_cast ： 尝试转换，失败时返回null，op为null时报错
-    - dyn_cast_if_present / dyn_cast_or_null ：  尝试转换，失败时返回null，op为null时返回null
-- function_ref 定义inline func
-- ArrayRef ：**轻量级数组引用，不进行内存分配或拷贝，适用于对已有数组进行访问而不修改的场景，是一个只读工具**
-- SmallVector
+### LogicalResult
+- 函数内用 success() / failure() 作为返回
+- 外部调用判断 succeeded / failed
+
+### isa
+isa : 不能在cast之后使用isa，有类似场景请用dyn_cast
+isa_and_nonnull ：允许op为null作为输入，返回null
+
+### cast
+- cast ：直接转换，失败时报错
+- cast_or_null ：允许op为null作为输入，返回null
+- dyn_cast ： 尝试转换，失败时返回null，op为null时报错
+- dyn_cast_if_present / dyn_cast_or_null ：  尝试转换，失败时返回null，op为null时返回null
+    好玩的地方
+    ```cpp
+    template <class X, class Y> auto dyn_cast_or_null(const Y &Val) {
+      return dyn_cast_if_present<X>(Val);
+    }
+    ```
+    例子：
+    ```cpp
+    Value mlir::getValueOrCreateConstantIndexOp(OpBuilder &b,
+                                                Location loc,
+                                                OpFoldResult ofr) {
+      if (auto value = llvm::dyn_cast_if_present<Value>(ofr))
+        return value;
+      auto attr = dyn_cast<IntegerAttr>(llvm::dyn_cast_if_present<Attribute>(ofr));
+      assert(attr && "expected the op fold result casts to an integer attribute");
+      return b.create<arith::ConstantIndexOp>(loc, attr.getValue().getSExtValue());
+    }
+    ```
+
+### all_of / any_of / for_each
+```cpp
+llvm-project/llvm/include/llvm/ADT/STLExtras.h
+```
+
+- all_of ：判断是否所有元素都满足条件
+    - 用法
+        ```cpp
+        if (llvm::all_of(inputs, [](Value input) {
+          return input.getType().isa<ShapedType>();
+        });
+        ```
+    - 实现
+        ```cpp
+        template <typename R, typename UnaryPredicate>
+        bool all_of(R &&Range, UnaryPredicate P) {
+          return std::all_of(adl_begin(Range), adl_end(Range), P);
+        }
+        ```
+
+- any_of ：判断是否有元素满足条件
+
+- none_of ：判断是否没有元素满足条件
+
+- for_each ：对每个元素执行操作
+
+- llvm::enumerate
+    - 返回一个pair，first是index，second是value，直接对元素使用 `.index()` 和 `.value()` 即可
+    - 也可以使用 `auto [idx, val] : llvm::enumerate(inputs)`
+    - 用法
+        ```cpp
+        auto isConsecute [](ArrayRef<int64_t> array) -> bool {
+          return llvm::all_of(llvm::enumerate(array), [array](auto iter)) {
+            return iter.index() + array.front() == iter.value();
+          });
+        };
+        ```
+
+### function
+- llvm:function_ref 定义inline func，用于传递函数指针
+
+### Array / Vector / Set
+- llvm:ArrayRef 
+    - **轻量级数组引用，不进行内存分配或拷贝，适用于对已有数组进行访问而不修改的场景，是一个只读工具**
+    - 常传入SmallVector或std::vector构造
+
+- llvm:SmallVector
     - SmallVector<int64_t> srcDims(2, 1) 表示 初始化了两个元素，每个元素的值都是 `1`。
     - `SmallVector<int64_t, 2>` 表示包含 `int64_t` 元素的 `SmallVector` 类型，其中 `2` 是指定的初始大小
     - 其他
-      
         ```c++
         llvm::reverse()
         llvm::to_vector()
@@ -831,6 +936,96 @@ if (auto intAttr = range.size.dyn_cast<Attribute>()) {
         llvm::map_range()
         ```
         
+- llvm:DenseSet
+    - 常用方法
+      - insert(const ValueT &V)
+      - erase(Iterator I)
+      - count(const ValueT &V)
+      - contains(const_arg_type_t<ValueT> V)
+      > `using const_arg_type_t = typename const_pointer_or_const_ref<T>::type;`
+
+
+- llvm:DenseMap
+    - 和std::map类似， <key, value>
+    - find / count
+
+- llvm:SetVector
+    - 将数组类型的对象转为SmallVector，常用来解决用ArrayRef构造SmallVector
+    - 用法
+      ```cpp
+      SmallVector<int64_t> dstShape(llvm::to_vector(windowTy.getShape()));
+      ```
+    - 源码
+      ```cpp
+      template <typename R>
+      SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
+        return {std::begin(Range), std::end(Range)};
+      }
+
+      template <typename RangeType>
+      // std::remove_const_t 用于移除模板参数类型的const修饰符
+      // std::remove_reference_t 用于移除模板参数类型的引用修饰符
+      // decltype 用于推断表达式的类型
+      // std::declval 用于创建模板类型的临时值
+      using ValueTypeFromRangeType =
+          std::remove_const_t<std::remove_reference_t<decltype(*std::begin(
+              std::declval<RangeType &>()))>>;
+      ```
+
+- llvm::seq
+    - 生成一个连续的序列，包含起始值，不包含结束值。 `seq_inclusive` 既包含起始值，也包含结束值。
+    - 用法
+        - 循环的范围 `for (auto idx : llvm::seq<int>(0, rank))`
+        - 创建个连续的`SmallVector<int64_t> res{llvm::to_vector(llvm::seq((int64_t)0, size))};`
+    - 源码
+      ```cpp
+      auto seq(T Begin, T End) {
+        return iota_range<T>(Begin, End, false);
+      }
+      auto seq(T Size) {
+        return seq<T>(0, Size);
+      }
+      ```
+
+- llvm::map_range
+    - 将一个range映射到另一个range
+    - 用法
+      ```cpp
+      auto res = llvm::map_range(srcDims, [&](int64_t dim) { return dim * 2; });
+      ```
+    - 源码
+      ```cpp 
+      template <typename ContainerTy, class FuncTy>
+      auto map_range(ContainerTy &&C, FuncTy F) {
+        return make_range(map_iterator(std::begin(C), F),
+                          map_iterator(std::end(C), F));
+      }
+
+      template <typename ItTy, class FuncTy>
+      inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
+        return mapped_iterator<ItTy, FuncTy>(std::move(I), std::move(F));
+      }
+      ```
+
+- llvm:TypeSwitch
+    - 常用在模板输入的pattern中，某些op需要额外的处理，例如构建某些op的时候需要额外set一些属性
+      ```cpp
+      auto newOp = clone(rewriter, op, TypeRange{newResType}, newOperands);
+      llvm::TypeSwitch<Operation *>(newOp)
+          .Case([&](linalg::BroadcastOp updateOp) {
+            auto srcOp = cast<linalg::BroadcastOp>(op);
+            updateOp.setDimensions...
+          })
+          .Case([&](linalg::ReduceOp updateOp) {
+            auto srcOp = cast<linalg::ReduceOp>(op);
+            updateOp.setDimensions...
+          })
+          .Case([&](linalg::TransposeOp updateOp) {
+            auto srcOp = cast<linalg::TransposeOp>(op);
+            updateOp.setPermutation...
+          })
+          .Default([&](Operation *noNeedUpdate) {});
+      ```
 
 ---
 
@@ -860,9 +1055,42 @@ int64_t offset = strides.getOffset();
 
 - getMemorySpace() → Attribute
 
-### MemRefDescriptor
+### offset / stride / size
 
-获得memrref相关信息
+#### 自定义dialect支持OffsetOp和StrideOp
+
+类似：[[mlir][memref] Introduce memref.offset and memref.stride ops](https://reviews.llvm.org/D130849)
+
+#### getStridesAndOffset
+```cpp
+// llvm-project/mlir/lib/IR/BuiltinTypes.cpp
+LogicalResult mlir::getStridesAndOffset(MemRefType t,
+                                        SmallVectorImpl<int64_t> &strides,
+                                        int64_t &offset) {
+  if (auto strided = llvm::dyn_cast<StridedLayoutAttr>(t.getLayout())) {
+    llvm::append_range(strides, strided.getStrides());
+    offset = strides.getOffset();
+    return success();
+  }
+  AffineExpr offsetExpr;
+  SmallVector<AffineExpr, 4> strideExprs;
+  if (failed(::getStridesAndOffset(t, strideExprs, offsetExpr)))
+    return failure();
+  if (auto cst = dyn_cast<AffineConstantExpr>(offsetExpr))
+    offset = cst.getValue();
+  else
+    offset = cst.getValue();
+  for (auto e : strideExprs) {
+    if (auto c = dyn_cast<AffineConsantExpr>(e))
+      strides.push_back(c.getValue());
+    else
+      strides.push_back(c.getValue());
+  }
+  return success();
+}
+```
+
+#### MemRefDescriptor
 
 ```cpp
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
@@ -871,7 +1099,71 @@ int64_t offset = strides.getOffset();
 ```cpp
 MemRefDescriptor memrefDesc(csrc);
 Value offsetval = memrefDesc.offset(builder, loc);
+// stride(OpBuilder &builder, Location loc, unsigned pos);
+Value strideVal = memrefDesc.stride(builder, loc, 0);
 ```
+
+#### Range
+
+```cpp
+struct Range {
+  OpFoldResult offset;
+  OpFoldResult size;
+  OpFoldResult stride;
+};
+```
+
+Range数据结构一般使用以下方法获得
+```cpp
+auto tileInfo = cast<TilingInterface>(op);
+SmallVector<Range> domain = op.getInterationDomain(rewriter);
+```
+
+由于是 `OpFoldResult` 类型，访问时使用`getValueOrCreateConstantIndexOp`方法
+
+取size的时候也经常先cast为Attribute
+```cpp
+if (inAttr = range.size.dyn_cast<Attribute>()) {
+  tileSize =inAttr.cast<IntegerAttr>().getInt();
+}
+```
+
+示例：
+
+```cpp
+// llvm-project/mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp
+FailureOr<SmallVector<scf::ForOp>>
+mlir::scf::lowerToLoopsUsingSCFForOp(RewriterBase &rewriter,
+                                     TilingInterface op) {
+  if (op->getNumResults() > 0) {
+    return rewriter.notifyMatchFailure(
+        op, "unable to lower to loops operations with return values");
+  }
+
+  SmallVector<Range> domain = op.getIterationDomain(rewriter);
+  SmallVector<Value> ivs;
+  SmallVector<scf::ForOp> loops;
+  Location loc = op.getLoc();
+  for (auto loopRange : domain) {
+    Value offsetVal =
+        getValueOrCreateConstantIndexOp(rewriter, loc, loopRange.offset);
+    Value sizeVal =
+        getValueOrCreateConstantIndexOp(rewriter, loc, loopRange.size);
+    Value strideVal =
+        getValueOrCreateConstantIndexOp(rewriter, loc, loopRange.stride);
+    auto loop = rewriter.create<scf::ForOp>(op.getLoc(), offsetVal, sizeVal,
+                                            strideVal, ValueRange{});
+    loops.push_back(loop);
+    ivs.push_back(loop.getInductionVar());
+    rewriter.setInsertionPoint(loop.getBody()->getTerminator());
+  }
+  if (failed(op.generateScalarImplementation(rewriter, op.getLoc(), ivs))) {
+    return failure();
+  }
+  return loops;
+}
+```
+
 
 ---
 
@@ -962,27 +1254,50 @@ if (xxx) {
 mlir/include/mlir/IR/OpDefinition.h
 ```
 
-该对象有点像 `std::optional` 定义的对象，使用该对象前需要先使用 `.has_value()` 看看值是否存在
-
-常见于一些op的fold行为
+OpFoldResult是一个union，可以是Value，Attribute，也可能是空的(使用其前记得 `isNull` 函数判断下)
 
 ```cpp
-// mlir/lib/Dialect/Complex/IR/ComplexOps.cpp
-OpFoldResult NegOp::fold(FoldAdaptor adaptor) {
-  // complex.neg(complex.neg(a)) -> a
-  if (auto negOp = getOperand().getDefiningOp<NegOp>())
-    return negOp.getOperand();
+class OpFoldResult : public PointerUnion<Attribute, Value> {
+  using PointerUnion<Attribute, Value>::PointerUnion;
 
-  return {};
-}
-OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
-  // complex.log(complex.exp(a)) -> a
-  if (auto expOp = getOperand().getDefiningOp<ExpOp>())
-    return expOp.getOperand();
+public:
+  void dump() const { llvm::errs() << *this << "\n"; }
 
-  return {};
-}
+  MLIRContext *getContext() const {
+    return is<Attribute>() ? get<Attribute>().getContext()
+                           : get<Value>().getContext();
+  }
+};
 ```
+
+常见用法：
+
+- 一些op的fold行为
+    ```cpp
+    // mlir/lib/Dialect/Complex/IR/ComplexOps.cpp
+    OpFoldResult NegOp::fold(FoldAdaptor adaptor) {
+      // complex.neg(complex.neg(a)) -> a
+      if (auto negOp = getOperand().getDefiningOp<NegOp>())
+        return negOp.getOperand();
+
+      return {};
+    }
+    OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
+      // complex.log(complex.exp(a)) -> a
+      if (auto expOp = getOperand().getDefiningOp<ExpOp>())
+        return expOp.getOperand();
+
+      return {};
+    }
+    ```
+- getAsOpFoldResult(ValueRange values)
+    遍历values，尝试将value转化为constant Attribute，如果失败则返回value
+    ```cpp
+    Attribute attr;
+    if (matchPattern(value, m_Constant(&attr)))
+      return attr;
+    return value;
+    ```
 
 ---
 
@@ -1107,7 +1422,7 @@ llvm-project/mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     // CHECK-NEXT
     ```
 
-> 使用 `mlir-tblgen` 来生成 `pass.h.inc`
+> 使用 `mlir-tblgen` 主动生成 `pass.h.inc`
 > `mlir-tblgen -gen-op-defs Passes.td -o Passes.h.inc `
 
 ---
@@ -1347,6 +1662,7 @@ Value 必然包含 Type，Type 也可以作为 Attribute 附加在 Operation 上
 - ShapedType
     - ShapedType::kDynamic 用于判断某个数不是 `?`
     - isDynamicDim(i)
+    - 当Type满足 `!type.isa<ShapedType>()` 时，认为该type是个scalar
 - RankedTensorType
     - getRank()
     - getElementType()
@@ -1496,6 +1812,46 @@ llvm::find_if(shapeIndexs, [&](int64_t shapeIndex) {
         newShapes.emplace_back(rewriter.getIndexAttr(shape.value()));
       }
 			rewriter.create<tensor::EmptyOp>(loc, newShapes, srcType.getElementType());
+```
+
+### 两维计算展开高维为循环
+compute(memref<axbxf32>) -> for a { compute(memref<1xbxf32>) }
+
+获得memref的offset 、size、stide的方法间 [offset-size-stride](#offset--stride--size) 节
+
+
+下面以第一种方法获得的offset、size、stride为例，来处理
+
+```cpp
+// 创建for循环
+Value lowBound = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+Value upperBound = rewriter.create<memref::DimOp>(loc, src, 0);
+Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+scf::ForOp outerLoop = rewriter.create<scf::ForOp>(loc, lowBound, upperBound, one);
+// 创建内部计算
+Block *block = outerLoop.getBody();
+rewriter.setInsertionPointToStart(body);
+Value iter = body->getArgument(0);
+// dst
+auto createViewVal = [&](Value target) {
+  // 不能支持dynamic stride
+  Value innermostStride = rewriter.create<xxx::StrideOp>(loc, target, 0);
+  Value strideIter = rewriter.create<arith::MulIOp>(loc, iter, innermostStride);
+  Value offset = rewrite.create<xxx::OffsetOp>(loc, target);
+  Value finalOffset = rewriter.create<arith::AddIOp>(loc, offset, strideIter);
+  Value leftDim = rewriter.create<memref::DimOp>(loc, src, 1);
+  return rewriter.create<xxx::MemrefCastOp>(
+      loc, target, getElementTypeOrSelf(target.getType()),
+      /*offset*/finalOffset,
+      /*size*/ValueRange({one, leftDim}),
+      /*stride*/ValueRange({one}));
+}
+for (Value operand : op.getOperands()) {
+  Value newOperand = createViewVal(operand);
+  newOperands.push_back(newOperand);
+}
+auto newOp = clone(rewriter, op, TypeRange{newResType}, newOperands);
+rewriter.replaceOp(op, newOp->getResults());
 ```
 
 ### 判断输入是否为升序
