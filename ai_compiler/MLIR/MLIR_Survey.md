@@ -76,7 +76,7 @@ dialect 将所有的IR放在了同一个命名空间中，分别对每个IR定�
 
 3.   **dialect 内部构成**
 
-dialect主要是由自定义的 `Type`、`Attribute`、`Interface` 以及 `operation` 构成。operation 细分为Attribute、Type、Constraint、Interface、Trait（属性、类型、限制、接口、特征）。同时存在 ODS 和 DRR 两个重要的模块，这两个模块都是基于 tableGen 模块，**ODS 模块用于定义 operation ，DRR 模块用于实现两个 dialect 之间的 conversion**。
+dialect主要是由自定义的 `Type`、`Attribute`、`Interface` 以及 `operation` 构成。operation 细分为Attribute、Type、Constraint、Interface、Trait（属性、类型、限制、接口、特征）。同时存在 ODS (tablegen的后端)和 DRR 两个重要的模块，这两个模块都是基于 tableGen 模块，**ODS 模块用于定义 operation ，DRR 模块用于实现两个 dialect 之间的 conversion**。
 
 <div style="text-align: center;"><img src="./img_MLIR_Survey/image-213.png" alt="image-213" style="width: 90%;"></div>
 
@@ -117,7 +117,7 @@ dialect主要是由自定义的 `Type`、`Attribute`、`Interface` 以及 `opera
 
 >   本节创建新的dialect包括 手动编写C++创建 以及 **利用[ODS](https://mlir.llvm.org/docs/Interfaces/#attributeoperationtype-interfaces)框架生成**
 >
->   ODS 全称 Operation Definition Specification，操作者只需要根据 operation 框架定义的规范，在一个`.td`文件中填写相应的内容，使用 mlir 的 tableGen 工具就可以自动生成上面的 C++ 代码。
+>   ODS 全称 Operation Definition Specification，操作者只需要根据 operation 框架定义的规范，**在一个`.td`文件中填写相应的内容，使用 mlir 的 tableGen 工具就可以自动生成上面的 C++ 代码。**
 >
 >   本节完全参考官方文档 ：[Chapter 2: Emitting Basic MLIR - MLIR (llvm.org)](https://mlir.llvm.org/docs/Tutorials/Toy/Ch-2/)
 

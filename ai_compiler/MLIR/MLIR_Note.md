@@ -28,7 +28,7 @@ cmake --build . -- ${MAKEFLAGS}
 cmake --build . --target check-mlir
 ```
 
-生成的compile_commands.json在 `llvm-project/build` 目录下，复制到llvm-project目录即可
+生成的compile_commands.json在 `build` 目录下，复制到llvm-project目录即可
 
 - 如果是bazel编译
 
@@ -60,7 +60,7 @@ ctrl + p 输入 clangd，先点击 下载language server；然后 加 settings.j
 }
 ```
 
-使用compile_commands.json主要是方便索引文件，特别是td生成的 `inc` 文件，但也可以人为从 `llvm-project/build/tools/mlir/include/mlir/xxx/xxx` 中找到编译出的inc
+使用compile_commands.json主要是方便索引文件，特别是td生成的 `inc` 文件，但也可以人为从 `build/tools/mlir/include/mlir/xxx/xxx` 中找到编译出的inc
 
 ## Adaptor
 
@@ -90,7 +90,7 @@ struct TransposeSliceLayoutPattern : public OpRewritePattern<mhlo::SliceOp> {
 ## Attribute
 
 ```cpp
-llvm-project/mlir/include/mlir/IR/Attribute.h
+mlir/include/mlir/IR/Attribute.h
 ```
 
 常见类型：
@@ -156,20 +156,35 @@ Block包含BlockArguement（使用getArguements()获得）和BlockOperand
 ## Builder
 
 ```cpp
-llvm-project/mlir/include/mlir/IR/Builders.h
-llvm-project/mlir/lib/IR/Builders.cpp
+mlir/include/mlir/IR/Builders.h
+mlir/lib/IR/Builders.cpp
 ```
 
-`Builder` 用于创建新的 MLIR 操作
+`Builder` 用于创建新的 MLIR 操作，例如各种 `Type`, `Attr`, `AffineMap` 等
 
-OpBuilder类型
+OpBuilder 继承自 Builder 类，额外提供了 `class InsertPoint` 和 `struct Listener`
+
+
+
+### 主要元素
+
+- Listener
+
+目前的Kind有下面两种
+
+```cpp
+OpBuilderListener = 0,
+RewriterBaseListener = 1
+```
+
+
 
 ### pattern rewriter
 
 用于重写（transform）现有 MLIR 操作的工具。它提供了一组方法，允许用户在遍历操作并修改它们时进行规则匹配和替换。
 
 ```cpp
-llvm-project/mlir/include/mlir/IR/PatternMatch.h
+mlir/include/mlir/IR/PatternMatch.h
 ```
 
 `PatternRewriter &rewriter`  
@@ -247,14 +262,14 @@ bufferization：将逻辑计算语义的tensor转为物理内存语义的buffer
 （这部分来自大佬同事的笔记）
 
 ```c++
-llvm-project/mlir/lib/Dialect/Bufferization/IR/BufferizableOpInterface.cpp
+mlir/lib/Dialect/Bufferization/IR/BufferizableOpInterface.cpp
 ```
 
 1） OneShotBufferize pass 
 
 对于每个有 `BufferizableOpInterface` 的op都进行bufferize
 
-- 声明：llvm-project/mlir/include/mlir/Dialect/Bufferization/Transforms/Passes.td
+- 声明：mlir/include/mlir/Dialect/Bufferization/Transforms/Passes.td
     - 1. 先基于tensor的SSA use-def链进行原位分析来确认哪些operand可以**in-place bufferize**.（尽量减少alloc和copy, 提高性能）
         - destination-passing style op（继承`DestinationStyleOpInterface` ）： 某一个**operand和dst的buffer可复用**，所以分配了该operand的buffer后，无需再分配dst的buffer：eg: %t0 = tensor.insert %f into %dest[%idx]， buffer(%t0)和buffer(%dest)是完全一致的；
         - 非destination-passing style op：对每个OpOperand产生一个新的buffer allocation, eg：tensor.generate
@@ -264,7 +279,7 @@ llvm-project/mlir/lib/Dialect/Bufferization/IR/BufferizableOpInterface.cpp
     - 4. 函数签名的layout map由`function-boundary-type-conversion`选项单独控制，可选的参数有3种：`infer-layout-map`，`fully-dynamic-layout-map` and `identity-layout-map`， 默认是`infer-layout-map`。无法精确推测时，函数参数类型为fully dynamic layout maps。
     - 5.  `bufferize-function-boundaries` 是一个用来对funcOp、returnOp、callOp进行bufferize的flag
     - 6.funcArg一般可以bufferize，除非有 `bufferization.writable = false`
-- 实现：llvm-project/mlir/lib/Dialect/Bufferization/Transforms/Bufferize.cpp
+- 实现：mlir/lib/Dialect/Bufferization/Transforms/Bufferize.cpp
     - struct OneShotBufferizePass {void runOnOperation() override }
         - Configure type converter， 先获得 unknownTypeConversionOption：
             - 若是LayoutMapOption::IdentityLayoutMap， bufferization::getMemRefTypeWithStaticIdentityLayout(tensorType, memorySpace)；
@@ -276,22 +291,22 @@ llvm-project/mlir/lib/Dialect/Bufferization/IR/BufferizableOpInterface.cpp
         - createCanonicalizerPass()
         - createCSEPass()
         - createLoopInvariantCodeMotionPass()
-- 示例：llvm-project/mlir/test/Dialect/Bufferization/Transforms/one-shot-module-bufferize-out-params.mlir, llvm-project/mlir/test/Dialect/Bufferization/Transforms/one-shot-module-bufferize.mlir
+- 示例：mlir/test/Dialect/Bufferization/Transforms/one-shot-module-bufferize-out-params.mlir, mlir/test/Dialect/Bufferization/Transforms/one-shot-module-bufferize.mlir
 
 2) transform IR : transform.bufferization.one_shot_bufferize 有很多可选的参数
 
 - layout{IdentityLayoutMap} { bufferize_function_boundaries = true }
 - {bufferize_function_boundaries = true }
-- 定义：llvm-project/mlir/include/mlir/Dialect/Bufferization/TransformOps/BufferizationTransformOps.td
+- 定义：mlir/include/mlir/Dialect/Bufferization/TransformOps/BufferizationTransformOps.td
 - 实现：transform.bufferization.one_shot_bufferize的代码：
-    - llvm-project/mlir/lib/Dialect/Bufferization/TransformOps/BufferizationTransformOps.cpp: transform::OneShotBufferizeOp::apply()函数，从transform IR提供的各个参数中获得OneShotBufferizationOptions options，之后主要调用
+    - mlir/lib/Dialect/Bufferization/TransformOps/BufferizationTransformOps.cpp: transform::OneShotBufferizeOp::apply()函数，从transform IR提供的各个参数中获得OneShotBufferizationOptions options，之后主要调用
         - runOneShotModuleBufferize()
             - insertTensorCopies(moduleOp, options)
             - bufferizeOp() 会调用`BufferizableOpInterface::bufferize()`函数来对每个op进行具体的bufferize
         - runOneShotBufferize()
             - insertTensorCopies(target, options)
             - bufferizeOp() 会调用`BufferizableOpInterface::bufferize()`函数来对每个op进行具体的bufferize
-- 示例：llvm-project/mlir/test/Dialect/Bufferization/Transforms/transform-ops.mlir
+- 示例：mlir/test/Dialect/Bufferization/Transforms/transform-ops.mlir
 
 ```llvm
 // 编译命令：mlir-opt --test-transform-dialect-interpreter
@@ -390,7 +405,7 @@ struct TransposeSliceLayoutPattern : public OpRewritePattern<mhlo::SliceOp> {
 ### dialect conversion
 
 ```cpp
-llvm-project/mlir/lib/Transforms/Utils/DialectConversion.cpp
+mlir/lib/Transforms/Utils/DialectConversion.cpp
 ```
 
 Value ConversionValueMapping::lookupOrDefault(Value from, Type desiredType)
@@ -452,7 +467,7 @@ std::unique_ptr<Pass> mlir::createConvertVectorToGPUPass(){
 ### type conversion
 
 ```cpp
-llvm-project/mlir/Conversion/LLVMCommon/TypeConverter.h
+mlir/Conversion/LLVMCommon/TypeConverter.h
 ```
 
 对type对改写一般通过 `typeConverter` ，其一般包含三个功能
@@ -525,7 +540,7 @@ use.getOwner() → Operation*
 ## DataType
 
 ```cpp
-llvm-project/mlir/include/mlir/IR/BuiltinTypes.h
+mlir/include/mlir/IR/BuiltinTypes.h
 ```
 
 从ShapedType使用getElementType()获得
@@ -601,7 +616,7 @@ llvm-project/mlir/include/mlir/IR/BuiltinTypes.h
 ### tensor
 
 ```cpp
-llvm-project/mlir/Dialect/Tensor/IR/Tensor.h
+mlir/Dialect/Tensor/IR/Tensor.h
 ```
 
 常用op
@@ -647,7 +662,7 @@ Value opInput = rewriter.create<tensor::ExpandShapeOp>(loc, inputType, collapseO
 The DialectRegistry maps a dialect namespace to a constructor for the matching dialect ：看起来像为dialect中的op外挂新的属性
 
 ```cpp
-llvm-project/mlir/include/mlir/IR/DialectRegistry.h
+mlir/include/mlir/IR/DialectRegistry.h
 ```
 
 例如为linalg的op挂上新的interface
@@ -692,7 +707,7 @@ struct MatmulOpInterface : public AggregatedOpInterface::ExternalModel<
 ## IRMapping
 
 ```cpp
-llvm-project/mlir/include/mlir/IR/IRMapping.h
+mlir/include/mlir/IR/IRMapping.h
 ```
 
 用法：
@@ -880,7 +895,7 @@ isa_and_nonnull ：允许op为null作为输入，返回null
 
 ### all_of / any_of / for_each
 ```cpp
-llvm-project/llvm/include/llvm/ADT/STLExtras.h
+llvm/include/llvm/ADT/STLExtras.h
 ```
 
 - all_of ：判断是否所有元素都满足条件
@@ -935,7 +950,7 @@ llvm-project/llvm/include/llvm/ADT/STLExtras.h
         llvm::make_filter_range()
         llvm::map_range()
         ```
-        
+    
 - llvm:DenseSet
     - 常用方法
       - insert(const ValueT &V)
@@ -961,7 +976,7 @@ llvm-project/llvm/include/llvm/ADT/STLExtras.h
       SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
         return {std::begin(Range), std::end(Range)};
       }
-
+      
       template <typename RangeType>
       // std::remove_const_t 用于移除模板参数类型的const修饰符
       // std::remove_reference_t 用于移除模板参数类型的引用修饰符
@@ -1000,7 +1015,7 @@ llvm-project/llvm/include/llvm/ADT/STLExtras.h
         return make_range(map_iterator(std::begin(C), F),
                           map_iterator(std::end(C), F));
       }
-
+      
       template <typename ItTy, class FuncTy>
       inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
         return mapped_iterator<ItTy, FuncTy>(std::move(I), std::move(F));
@@ -1063,7 +1078,7 @@ int64_t offset = strides.getOffset();
 
 #### getStridesAndOffset
 ```cpp
-// llvm-project/mlir/lib/IR/BuiltinTypes.cpp
+// mlir/lib/IR/BuiltinTypes.cpp
 LogicalResult mlir::getStridesAndOffset(MemRefType t,
                                         SmallVectorImpl<int64_t> &strides,
                                         int64_t &offset) {
@@ -1131,7 +1146,7 @@ if (inAttr = range.size.dyn_cast<Attribute>()) {
 示例：
 
 ```cpp
-// llvm-project/mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp
+// mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp
 FailureOr<SmallVector<scf::ForOp>>
 mlir::scf::lowerToLoopsUsingSCFForOp(RewriterBase &rewriter,
                                      TilingInterface op) {
@@ -1170,7 +1185,7 @@ mlir::scf::lowerToLoopsUsingSCFForOp(RewriterBase &rewriter,
 ## Operand
 
 ```c++
-llvm-project/mlir/include/mlir/IR/Operation.h
+mlir/include/mlir/IR/Operation.h
 ```
 
 方法（src: Operation *）
@@ -1279,14 +1294,14 @@ public:
       // complex.neg(complex.neg(a)) -> a
       if (auto negOp = getOperand().getDefiningOp<NegOp>())
         return negOp.getOperand();
-
+    
       return {};
     }
     OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
       // complex.log(complex.exp(a)) -> a
       if (auto expOp = getOperand().getDefiningOp<ExpOp>())
         return expOp.getOperand();
-
+    
       return {};
     }
     ```
@@ -1304,7 +1319,7 @@ public:
 ## pdll
 
 ```cpp
-llvm-project/mlir/include/mlir/Dialect/PDL/IR/PDLTypes
+mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 ```
 
 常见用法
@@ -1319,7 +1334,7 @@ llvm-project/mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 
 ## Pass
 
-写一个transform pass
+### 写一个 pass
 
 - Passes.td中定义pass的基本信息（描述、作用对象）
   xxxx/xxx/Transforms/Passes.td  （xxxx一般为project名字，例如iree，一般也会定义相应的namespace `mlir::iree`）
@@ -1425,6 +1440,75 @@ llvm-project/mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 > 使用 `mlir-tblgen` 主动生成 `pass.h.inc`
 > `mlir-tblgen -gen-op-defs Passes.td -o Passes.h.inc `
 
+### Pass infrastructure
+
+```cpp
+mlir/include/mlir/Pass/Pass.h
+mlir/lib/Pass/Pass.cpp
+```
+
+- 在pipeline中添加pass
+
+    - addPass
+        ```cpp
+        // unique_ptr 申明独占资源，防止pass之间抢占资源
+        void addPass(std::unique_ptr<Pass> pass);
+        ```
+    
+        ```cpp
+        void mlir::bufferization::buildBufferDeallocationPipeline(
+            OpPassManager &pm, const BufferDeallocationPipelineOptions &options) {
+          pm.addPass(memref::createExpandReallocPass(/*emitDeallocs=*/false));
+          pm.addPass(createCanonicalizerPass());
+          pm.addPass(createOwnershipBasedBufferDeallocationPass(options));
+          pm.addPass(createCanonicalizerPass());
+          pm.addPass(createBufferDeallocationSimplificationPass());
+          pm.addPass(createLowerDeallocationsPass());
+	      pm.addPass(createCSEPass());
+	      pm.addPass(createCanonicalizerPass());
+        }
+        ```
+    
+    - addNestPass: 制定pass的作用op，常见的有FuncOp、ModuleOp，这个一般在 `pass.td` 中就定义该pass的作用域
+        ```cpp
+          void addNestedPass(std::unique_ptr<Pass> pass) {
+            nest<OpT>().addPass(std::move(pass));
+          }
+          OpPassManager &nest() {
+            return nest(OpT::getOperationName());
+          }
+        ```
+        
+        ```cpp
+        void mlir::tosa::addTosaToLinalgPasses(
+            OpPassManager &pm, const TosaToLinalgOptions &options) {
+          if (!options.disableTosaDecompositions)
+            pm.addNestedPass<func::FuncOp>(tosa::createTosaOptionalDecompositions());
+          pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+          pm.addNestedPass<func::FuncOp>(tosa::createTosaInferShapesPass());
+          pm.addNestedPass<func::FuncOp>(tosa::createTosaMakeBroadcastablePass());
+          ...
+          pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+          pm.addNestedPass<func::FuncOp>(tosa::createTosaToLinalg());
+        }
+        ```
+
+- 保留当前IR的分析信息
+    - markAllAnalysesPreserved()
+    - markAnalysesPreserved(id)
+
+```cpp
+  // If there was no change to the IR, we mark all analyses as preserved.
+  if (!changed)
+    return markAllAnalysesPreserved();
+
+  // We currently don't remove region operations, so mark dominance as
+  // preserved.
+  markAnalysesPreserved<DominanceInfo, PostDominanceInfo>();
+```
+
+
+
 ---
 
 ## Rank
@@ -1459,7 +1543,7 @@ llvm-project/mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 ## SymbolTable
 
 ```cpp
-llvm-project/mlir/include/mlir/IR/SymbolTable.h
+mlir/include/mlir/IR/SymbolTable.h
 ```
 
 使用*'SymbolTable' trait*来表示Operation的特征表
@@ -1476,8 +1560,8 @@ SymbolTable用法：
 ## Region
 
 ```cpp
-llvm-project/mlir/include/mlir/IR/Region.h
-llvm-project/mlir/include/mlir/Transforms/RegionUtils.h
+mlir/include/mlir/IR/Region.h
+mlir/include/mlir/Transforms/RegionUtils.h
 ```
 
 region包含若干个block，一般linalgOp都包含一个region
@@ -1490,7 +1574,7 @@ region包含若干个block，一般linalgOp都包含一个region
 ## SideEffect
 
 ```c++
-llvm-project/mlir/include/mlir/Interfaces/SideEffectInterfaces.h
+mlir/include/mlir/Interfaces/SideEffectInterfaces.h
 ```
 
 `sideeffect` 是一种用于表示函数或操作可能引起的副作用的概念。副作用是指对程序状态的任何更改，这可能包括但不限于内存写入、I/O 操作、全局状态的更改等。
@@ -1630,7 +1714,7 @@ def SubOp : ToyOp<"sub", [Pure]> {
 linalg transformOp
 
 ```c++
-llvm-project/mlir/lib/Dialect/Linalg/TransformOps/LinalgTransformOps.cpp
+mlir/lib/Dialect/Linalg/TransformOps/LinalgTransformOps.cpp
 ```
 
 常见op（详细请学习[https://mlir.llvm.org/docs/Dialects/Transform/](https://mlir.llvm.org/docs/Dialects/Transform/)）
@@ -1699,7 +1783,7 @@ Value 必然包含 Type，Type 也可以作为 Attribute 附加在 Operation 上
 ## tiling
 
 ```c++
-llvm-project/mlir/lib/Dialect/Linalg/Transforms/Tiling.cpp
+mlir/lib/Dialect/Linalg/Transforms/Tiling.cpp
 ```
 
 常见概念
