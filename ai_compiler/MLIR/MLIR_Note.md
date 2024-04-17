@@ -611,6 +611,8 @@ mlir/include/mlir/IR/BuiltinTypes.h
 
 ## Dialect
 
+新增一个dialect可以参考最近mlir中新增的[polynomial dialect](https://github.com/llvm/llvm-project/commit/55b6f17071d25b77fcdc910ca9b15f89305137e0) ，然后就是补充各种dialect2dialect的conversion了
+
 ### linalg
 
 常用op
@@ -753,19 +755,56 @@ mlir/lib/IR/Dominance.cpp
 
 下面的 `T` 可以是 `Operation *` 或 `Value *`
 
-- dominates(T *a, Operation *b): 判断a是否支配b
+- bool dominates(T *a, Operation *b): 判断a是否支配b
   - 如果a是Operation，则返回 `a == b || properlyDominates(a, b)`
   - 如果a是Value，则返回 `(Operation *)a.getDefiningOp() == b || properlyDominates(a, b)`
 
 
-- properlyDominates(T *a, Operation *b)
+- Bool properlyDominates(T *a, Operation *b)
   - 如果a是Operation，则直接调用 properlyDominatesImpl
   - 如果a是Value，且a是BlockArguement，则`dominates(blockArg.getOwner(), b->getBlock());`，反之properlyDominates((Operation *)a.getDefiningOp(), b)
 
-- hasSSADominance(Block *block) -> hasSSADominance(block->getParent())
-- hasSSADominance(Region *region)
+- bool hasSSADominance(Block *block) -> hasSSADominance(block->getParent())
+- bool hasSSADominance(Region *region)
   - 判断region中的ops是否都满足SSA支配关系
   - 如果region中不满足，则无法分析出dominanceInfo，遍历order需要修改
+
+- DominanceInfoNode *getRootNode(Region *region)
+    - 获得给定region的root dominance node，输入的region必须有多block
+
+### DominanceInfoNode
+
+支配树节点 `llvm::DomTreeNodeBase<Block>`
+
+有一个 `SmallVector<DomTreeNodeBase *, 4> Children;`
+
+- begin() / end() 都是以 Children 为对象，所以遍历行为如下
+
+```cpp
+  while (!stack.empty()) {
+    auto &currentNode = stack.back();
+    // 检查当前node是否被处理
+    if (!currentNode->processed) {
+      // 处理该节点
+      currentNode->processed = true;
+      // getBlock() 会返回当前Block
+      simplifyBlock(knownValues, currentNode->node->getBlock(),
+                    hasSSADominance);
+    }
+    // 遍历该node的子节点
+    if (currentNode->node->begin() != currentNode->node->end()) {
+      auto *childNode = *(currentNode->childIterator++);
+      stack.emplace_back(
+          std::make_unique<CFGStackNode>(knownValues, childNode));
+    } else {
+      // 如果当前节点和其子节点都被处理了，移除它
+      stack.pop_back();
+    }
+  }
+```
+
+
+
 ---
 
 ## Func
@@ -1121,7 +1160,7 @@ llvm/include/llvm/ADT/STLExtras.h
       SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
         return {std::begin(Range), std::end(Range)};
       }
-
+      
       template <typename RangeType>
       // std::remove_const_t 用于移除模板参数类型的const修饰符
       // std::remove_reference_t 用于移除模板参数类型的引用修饰符
@@ -1162,7 +1201,7 @@ llvm/include/llvm/ADT/STLExtras.h
         return make_range(map_iterator(std::begin(C), F),
                           map_iterator(std::end(C), F));
       }
-
+      
       template <typename ItTy, class FuncTy>
       inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
         return mapped_iterator<ItTy, FuncTy>(std::move(I), std::move(F));
@@ -1446,14 +1485,14 @@ public:
       // complex.neg(complex.neg(a)) -> a
       if (auto negOp = getOperand().getDefiningOp<NegOp>())
         return negOp.getOperand();
-
+    
       return {};
     }
     OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
       // complex.log(complex.exp(a)) -> a
       if (auto expOp = getOperand().getDefiningOp<ExpOp>())
         return expOp.getOperand();
-
+    
       return {};
     }
     ```
@@ -1496,17 +1535,17 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	let summary = "";
     	let description = [{
     		more detail
-
+  
     		For example, consider the following input:
-
+  
         ``` mlir
-
+  
     	  ````
 
         After running, we get the expected:
-
+      
         ``` mlir
-
+      
       	```
       ]};
       let constructor = "mlir::xxxx::createPassNamePass()";
@@ -1540,12 +1579,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     #include "mlir/IR/Type.h"
     #include "mlir/Pass/Pass.h"
     #include "mlir/Support/LLVM.h"
-
+  
     #define DEBUG_TYPE "pass-flag"
-
+  
     using namespace mlir;
     using namespace mlir::xxxx;
-
+  
     namespace{
     // 相关代码runOperation()写在匿名空间，匿名空间可以限制标识符的作用域，防止全局空间污染
     struct PassNamePass : public PassNamePassBase<PassNamePass> {
@@ -1553,7 +1592,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	// 	 this->optionName.setValue(optionName);
     	// }
     	explicit PassNamePass() = default;
-
+  
     	void runOnOperation() override {
     		// 根据td中的作用域来返回，如果pass的td定义的作用域是mlir::ModuleOp,则这里返回moduleOp
     		auto targetOp = getOperation();
@@ -1561,12 +1600,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     		...
     		// 也可以使用pattern
     	}
-
+  
     }
     }; // end struct
-
+  
     } //namespace
-
+  
     // std::unique_ptr mlir::xxxx::createPassNamePass(option-input-type optionName)
     std::unique_ptr mlir::xxxx::createPassNamePass(){
     	// return std::make_unique<PassNamePass>(optionName);
@@ -1579,7 +1618,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 
     ```cpp
     // RUN: mlir-opt -allow-unregistered-dialect %s -pass-pipeline='builtin.module(func.func(passname))' | FileCheck %s
-
+  
     func.func @example() -> () {
     	...
       return ...
@@ -1591,6 +1630,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 
 > 使用 `mlir-tblgen` 主动生成 `pass.h.inc`
 > `mlir-tblgen -gen-op-defs Passes.td -o Passes.h.inc `
+> 详细查看 `mlir-tblgen -h | grep gen`
 
 ### Pass infrastructure
 
@@ -1718,6 +1758,7 @@ mlir/include/mlir/Transforms/RegionUtils.h
 
 region包含若干个block，一般linalgOp都包含一个region
 
+- bool hasOneBlock() 常用来判断region内只有一个block，取Block的时候用 `a.front()`
 - getUsedValuesDefinedAbove(MutableArrayRef<Region> regions, SetVector<Value> &values)
 收集在regions中使用，但不在region中的blockArg上定义的Value，将其放入values
 
