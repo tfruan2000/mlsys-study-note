@@ -24,7 +24,7 @@ cmake -G Ninja ../llvm \
    -DLLVM_ENABLE_RTTI=ON \
    -DLLVM_BUILD_EXAMPLES=ON
 
-cmake --build . -- ${MAKEFLAGS} 
+cmake --build . -- ${MAKEFLAGS}
 cmake --build . --target check-mlir
 ```
 
@@ -108,15 +108,15 @@ mlir/include/mlir/IR/Attribute.h
 - src: AttrTy
     - ::get()
       例如从SmallVector<Attribute>变成ArrayAttr
-      
+
         ```cpp
         SmallVector<Attribute, 8> mappings;
         ArrayAttr tmp = ArrayAttr::get(context, mappings)
         ```
-      
+
     - getName()
     - setValue()
-    - getValue() 
+    - getValue()
     对于IntegertAttr会返回APInt，之后一般可以接 `getSExtValue()` ，来将APInt转为*int64_t*
 - src : operation*
     - getAttr / getAttrOfType ，一般get完之后要cast到对应的AttrType，例如
@@ -187,7 +187,7 @@ RewriterBaseListener = 1
 mlir/include/mlir/IR/PatternMatch.h
 ```
 
-`PatternRewriter &rewriter`  
+`PatternRewriter &rewriter`
 
 `ConversionPatternRewriter &rewriter`  :相比pattern rewriter要多传入一个adaptor
 
@@ -201,13 +201,13 @@ mlir/include/mlir/IR/PatternMatch.h
 - 创建
     - create<OpTy>(…)
     - create(OperationState)
-      
+
         ```cpp
         OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
                              newResults, op->getAttrs(), op->getSuccessors());
          Operation *newOp = rewriter.create(state);
         ```
-    
+
 - 替换
     - replace(Operation *op, Operation *newOp)
     - replace(Operation *op, ValueRange newValues())
@@ -255,7 +255,7 @@ bufferization：将逻辑计算语义的tensor转为物理内存语义的buffer
 
 申请一块空间，使用给定shape创建一个bufferize allocation。常会传入一个可选的 srcOp，表示从这个srcOp拷贝出的数据，此时就传入的 ValueRange dynamicShape就应为空。
 
-该op主要是帮助bufferization过程提供一个 `handler`，并且这样产生的alloc_tensor op没有不会产生 read-after-write 冲突，也不会alias其他buffer，可以再进行 `in-place bufferize` 
+该op主要是帮助bufferization过程提供一个 `handler`，并且这样产生的alloc_tensor op没有不会产生 read-after-write 冲突，也不会alias其他buffer，可以再进行 `in-place bufferize`
 
 ### one-shot-bufferize
 
@@ -265,7 +265,7 @@ bufferization：将逻辑计算语义的tensor转为物理内存语义的buffer
 mlir/lib/Dialect/Bufferization/IR/BufferizableOpInterface.cpp
 ```
 
-1） OneShotBufferize pass 
+1） OneShotBufferize pass
 
 对于每个有 `BufferizableOpInterface` 的op都进行bufferize
 
@@ -357,7 +357,7 @@ func.func @matmul(%arg0: memref<12x9xf32, strided<[?, ?], offset: ?>>, %arg1: me
 - `applyFullConversion` ：调用pattern对目标进行转换，直至IR满足`ConversionTarget`设置的目标合法，pattern必须成功才会产生合法的target
 - `applyPatternAndFoldGreedily`：尽可能地多次修改，pattern可以失败
 
-前两种常用于dialect conversion，需要多传入一个`ConversionTarget`参数，greedilyConversion一般用于优化pass 
+前两种常用于dialect conversion，需要多传入一个`ConversionTarget`参数，greedilyConversion一般用于优化pass
 
 ```cpp
 MLIRContext &ctx = getContext();
@@ -431,17 +431,17 @@ namespace{
 struct PrepareContractToGPUMMA:
 		: public OpRewritePattern<vector::TransposeOp>{
 	using OpRewritePattern<vector::TransposeOp>::OpRewritePattern;
-	LogicalResult matchAndRewrite(vector::TransposeOp, 
+	LogicalResult matchAndRewrite(vector::TransposeOp,
 																PatternRewriter &rewriter) const override{
 	...
 	}
 }
 ...
-void mlir::populateVectorToGPUConversionPattern(RewritePatternSet 
+void mlir::populateVectorToGPUConversionPattern(RewritePatternSet
 																															&patterns) {
-	patterns.add<PrepareContractToGPUMMA>(patterns.getContext()); 
+	patterns.add<PrepareContractToGPUMMA>(patterns.getContext());
 	// 可以设置pattern的/*benefit=*/
-	// patterns.add<PrepareContractToGPUMMA>(patterns.getContext(), /*benefit=*/2); 
+	// patterns.add<PrepareContractToGPUMMA>(patterns.getContext(), /*benefit=*/2);
 	...
 }
 } // namespace
@@ -449,7 +449,7 @@ void mlir::populateVectorToGPUConversionPattern(RewritePatternSet
 namespace{
 class ConvertVectorToGPUPass
 	: public impl::ConvertVectorToGPUBase<ConvertVectorToGPUPass> {
-	explicit ConvertVectorToGPUPass() = default; 
+	explicit ConvertVectorToGPUPass() = default;
 
 	void runOnOperation() override {
 		RewritePatternSet patterns(&getContext());
@@ -535,6 +535,48 @@ OpOperand &operand : value.getUses()
 user_iterator相当于对use_iterator使用getOwner()
 use.getOwner() → Operation*
 
+### dataflow framework
+
+```cpp
+mlir/include/mlir/Analysis/DataFlowFramework.h
+mlir/lib/Analysis/DataFlowFramework.cpp
+```
+
+- DataFlowSolver
+
+实现 child data-flow analyses，使用的是 fixed-point iteration 算法。一直维护 `AnalysisState` 和 `ProgramPoint` 信息。
+
+数据流分析的流程：
+
+(1) 加载并初始化 children analyses
+例如
+```cpp
+std::unique_ptr<mlir::DataFlowSolver> createDataFlowSolver() {
+  auto solver = std::make_unique<mlir::DataFlowSolver>();
+  solver->load<mlir::dataflow::DeadCodeAnalysis>();
+  solver->load<mlir::dataflow::SparseConstantPropagation>();
+  ...
+  return solver;
+}
+```
+
+(2) 配置并运行分析，直到达到设置的 fix-point
+
+(3) 从 solver 中 query analysis state results
+
+- AnalysisState
+
+- DataFlowAnalysis
+
+
+### dataflow analysis
+
+```cpp
+mlir/include/mlir/Analysis/DataFlow/SparseAnalysis.h
+mlir/lib/Analysis/DataFlow/SparseAnalysis.cpp
+```
+
+
 ---
 
 ## DataType
@@ -603,15 +645,15 @@ mlir/include/mlir/IR/BuiltinTypes.h
 - scf.forall / scf.parallel ： 循环body的程序是可以的并发执行，没有前后依赖的
   可以使用多线程的方式来执行，线程的id就是循环的迭代变量
   从scf到launch这种转换是可以通过代码自动完成的，需要的额外信息就是每一个循环的轴到launch的轴的映射关系
-  
+
     ```llvm
     scf.forall (%thread_id_1, %thread_id_2) in
-             (%num_threads_1, %num_thread_2) {      
-             // ...                                       
-          }                                                                        
+             (%num_threads_1, %num_thread_2) {
+             // ...
+          }
         }
     ```
-  
+
 
 ### tensor
 
@@ -694,6 +736,38 @@ struct MatmulOpInterface : public AggregatedOpInterface::ExternalModel<
 
 ---
 
+## Dominance
+
+```cpp
+mlir/include/mlir/IR/Dominance.h
+mlir/lib/IR/Dominance.cpp
+```
+
+### DominanceInfo
+
+`class DominanceInfo : public detail::DominanceInfoBase</*IsPostDom=*/false>`
+
+返回一个 region-like 的 dominance
+
+常见函数
+
+下面的 `T` 可以是 `Operation *` 或 `Value *`
+
+- dominates(T *a, Operation *b): 判断a是否支配b
+  - 如果a是Operation，则返回 `a == b || properlyDominates(a, b)`
+  - 如果a是Value，则返回 `(Operation *)a.getDefiningOp() == b || properlyDominates(a, b)`
+
+
+- properlyDominates(T *a, Operation *b)
+  - 如果a是Operation，则直接调用 properlyDominatesImpl
+  - 如果a是Value，且a是BlockArguement，则`dominates(blockArg.getOwner(), b->getBlock());`，反之properlyDominates((Operation *)a.getDefiningOp(), b)
+
+- hasSSADominance(Block *block) -> hasSSADominance(block->getParent())
+- hasSSADominance(Region *region)
+  - 判断region中的ops是否都满足SSA支配关系
+  - 如果region中不满足，则无法分析出dominanceInfo，遍历order需要修改
+---
+
 ## Func
 
 所有dialect的funcOp都继承了  `FunctionOpInterface` , 该interface提供许多方法来获得func的信息
@@ -758,13 +832,13 @@ OpOperandVector getDpsInitOperands()
 - TilingInterface：对于有该interface的op可以cast成该interface `llvm::cast<TilingInterface>(op)`
     - getLoopIteratorTypes：每个元素为utils::IteratorType，表示为utils::IteratorType::parallel或utils::IteratorType::reduction
     - getIterationDomain：每个元素是一个Range
-      
+
         ```cpp
         if (auto intAttr = range.size.dyn_cast<Attribute>()) {
         	tileSize = std::min(setTileSize, intAttr.cast<IntegerAttr>().getInt());
         }
         ```
-        
+
 
  ### DialectInlinerInterface
 
@@ -807,13 +881,54 @@ if (auto intAttr = range.size.dyn_cast<Attribute>()) {
 - hasEffect
 - hasNoEffect
 
-### op常用的interface
+### BranchOpInterface
 
-#### AllocOpInterface
+所以分支类型的op都继承了该interface，例如scf.if，scf.for等
 
-#### ViewLikeOpInterface
+- mlir::SuccessorOperands getSuccessorOperands(unsigned index)
 
-tensor.expand_shape, tensor.collapse_shape,
+获得后继操作数，例如下面的例子中`invoke`的后继操作数是`^error`的 `%e`
+
+```llvm
+invoke %function(%0)
+  label ^success ^error(%1 : i32)
+
+^error(%e: !error, %arg0: i32):
+```
+
+例子：
+
+```cpp
+/// mlir/lib/Dialect/Linalg/Transforms/Detensorize.cpp
+/// The result is a map from a branch op to a subset of indices of its operands.
+/// The indices specify which of the branch op's operands should be detensored.
+static DenseMap<Operation *, DenseSet<int>> computeBranchOpDetensoring(
+    const DenseSet<BlockArgument> &blockArgsToDetensor) {
+  DenseMap<Operation *, DenseSet<int>> detensorableBranchOps
+  for (auto blockArgumentElem : blockArgsToDetensor) {
+    Block *block = blockArgumentElem.getOwner()
+    for (PredecessorIterator pred = block->pred_begin();
+         pred != block->pred_end(); ++pred) {
+      BranchOpInterface terminator =
+          dyn_cast<BranchOpInterface>((*pred)->getTerminator());
+      auto blockOperands =
+          terminator.getSuccessorOperands(pred.getSuccessorIndex())
+      if (blockOperands.empty() ||
+          blockOperands.isOperandProduced(blockArgumentElem.getArgNumber()))
+        continue
+      detensorableBranchOps[terminator].insert(
+          blockOperands.getOperandIndex(blockArgumentElem.getArgNumber()));
+    }
+
+  return detensorableBranchOps;
+}
+```
+
+### AllocOpInterface
+
+### ViewLikeOpInterface
+
+tensor.expand_shape, tensor.collapse_shape,tensor.insert_slice, tensor.extract_slice,
 memref.expand_shape, memref.collapse_shape,
 memref.view, memref.reshape, memref.reshape, memref.reinterpret_cast, memref.cast 等
 
@@ -827,7 +942,7 @@ memref.view, memref.reshape, memref.reshape, memref.reinterpret_cast, memref.cas
     if (a->getName() != b->getName() ||
         a->getAttrs() != b->getAttrs() ||
         a->getNumOperands() != b->getNumOperands()) {
-      return false;    
+      return false;
     }
     for (auto [operand1, operand2] : llvm::zip(a.getOperands(), b.getOperands())) {
       if (operand1 == a.getViewSource() && operand2 == b.getViewSource())
@@ -839,7 +954,7 @@ memref.view, memref.reshape, memref.reshape, memref.reinterpret_cast, memref.cas
   }
   ```
 
-#### OffsetSizeAndStrideOpInterface
+### OffsetSizeAndStrideOpInterface
 
 也属于 `ViewLikeOpInterface` ，可以通过 `llvm::cast<OffsetSizeAndStrideOpInterface>(op)` 获得
 
@@ -935,7 +1050,7 @@ llvm/include/llvm/ADT/STLExtras.h
 - llvm:function_ref 定义inline func，用于传递函数指针
 
 ### Array / Vector / Set
-- llvm:ArrayRef 
+- llvm:ArrayRef
     - **轻量级数组引用，不进行内存分配或拷贝，适用于对已有数组进行访问而不修改的场景，是一个只读工具**
     - 常传入SmallVector或std::vector构造
 
@@ -950,7 +1065,7 @@ llvm/include/llvm/ADT/STLExtras.h
         llvm::make_filter_range()
         llvm::map_range()
         ```
-    
+
 - llvm:DenseSet
     - 常用方法
       - insert(const ValueT &V)
@@ -964,6 +1079,36 @@ llvm/include/llvm/ADT/STLExtras.h
     - 和std::map类似， <key, value>
     - find / count
 
+- llvm::DenseMapInfo
+    - hash表，只存key，`DenseMapInfo<T*>`
+    - 使用 `getHashValue` 来获得hash值，最原始的方法是使用指针地址偏移计算的。但如果要实现自定义的hash，可以继承该类并重载 `getHashValue` 和 `isEqual` 方法
+    - 例如：CSE中确定Op是否相同的代码
+      ```cpp
+      // mlir/lib/Transform/CSE.cpp
+      struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
+        static unsigned getHashValue(const Operation *opC) {
+          return OperationEquivalence::computeHash(
+              const_cast<Operation *>(opC),
+              /*hashOperands*/OperationEquivalence::directHaseValue,
+              /*hashResults*/OperationEquivalence::ignoreHaseValue,
+              OperationEquivalence::IngoreLocations);
+        }
+      }
+      static bool isEqual(const Operation *lhsC, const Operation *rhsC) {
+        auto *lhs = const_cast<Operation *>(lhsC);
+        auto *rhs = const_cast<Operation *>(rhsC);
+        if (lhs == rhs)
+          return true;
+        // 防止lsh/rhs是hash表中的特异值
+        if (lhs == getTombstoneKey() || lhs == getEmptyKey()
+            || rhs == getTombstoneKey() || rhs == getEmptyKey())
+          return false;
+        return OperationEquivalence::isEquivalentTo(
+            const_cast<Operation>(lhsC), const_cast<Operation>(rhsC),
+            OperationEquivalence::IngoreLocations);
+      }
+      ```
+
 - llvm:SetVector
     - 将数组类型的对象转为SmallVector，常用来解决用ArrayRef构造SmallVector
     - 用法
@@ -976,7 +1121,7 @@ llvm/include/llvm/ADT/STLExtras.h
       SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
         return {std::begin(Range), std::end(Range)};
       }
-      
+
       template <typename RangeType>
       // std::remove_const_t 用于移除模板参数类型的const修饰符
       // std::remove_reference_t 用于移除模板参数类型的引用修饰符
@@ -1002,6 +1147,8 @@ llvm/include/llvm/ADT/STLExtras.h
       }
       ```
 
+### make_range
+
 - llvm::map_range
     - 将一个range映射到另一个range
     - 用法
@@ -1009,18 +1156,23 @@ llvm/include/llvm/ADT/STLExtras.h
       auto res = llvm::map_range(srcDims, [&](int64_t dim) { return dim * 2; });
       ```
     - 源码
-      ```cpp 
+      ```cpp
       template <typename ContainerTy, class FuncTy>
       auto map_range(ContainerTy &&C, FuncTy F) {
         return make_range(map_iterator(std::begin(C), F),
                           map_iterator(std::end(C), F));
       }
-      
+
       template <typename ItTy, class FuncTy>
       inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
         return mapped_iterator<ItTy, FuncTy>(std::move(I), std::move(F));
       }
       ```
+
+- llvm::make_early_inc_range
+    - 允许range中的元素被修改，且不影响iterator。例如遍历DenseMap对符合条件的iterator进行erase
+
+### switch
 
 - llvm:TypeSwitch
     - 常用在模板输入的pattern中，某些op需要额外的处理，例如构建某些op的时候需要额外set一些属性
@@ -1198,7 +1350,7 @@ mlir/include/mlir/IR/Operation.h
 
 ## OpOperand
 
-每个Operation的Operand都是到Value的指针 
+每个Operation的Operand都是到Value的指针
 
 ```cpp
 OpOperand a;
@@ -1225,11 +1377,11 @@ Operation都包含Results和Operands；Results中包含多个OpResult实例，Op
 
 - 获得父op
     - getParentOp()：返回该operation的最近的上一级op
-      
+
         如果要判断某个op的父op就用该方法
-        
+
     - getParentOfType<OpTy>()：返回该operation的最近的上一级的为OpTy的op
-      
+
         ```cpp
         template <typename OpTy>
         OpTy getParentOfType() {
@@ -1241,7 +1393,7 @@ Operation都包含Results和Operands；Results中包含多个OpResult实例，Op
         	}
         }
         ```
-    
+
 - getBlock 返回父block，而不是当前op的block
 - getBody 返回当前op内部的block或region
 - getOperands()
@@ -1294,14 +1446,14 @@ public:
       // complex.neg(complex.neg(a)) -> a
       if (auto negOp = getOperand().getDefiningOp<NegOp>())
         return negOp.getOperand();
-    
+
       return {};
     }
     OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
       // complex.log(complex.exp(a)) -> a
       if (auto expOp = getOperand().getDefiningOp<ExpOp>())
         return expOp.getOperand();
-    
+
       return {};
     }
     ```
@@ -1338,23 +1490,23 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 
 - Passes.td中定义pass的基本信息（描述、作用对象）
   xxxx/xxx/Transforms/Passes.td  （xxxx一般为project名字，例如iree，一般也会定义相应的namespace `mlir::iree`）
-  
+
     ```cpp
     def passNamePass : Pass<"pass-flag">, "该pass的作用对象" > { // 作用域可以为 func::FuncOp 或 mlir::ModuleOp
     	let summary = "";
     	let description = [{
-    		more detail 
-    		
+    		more detail
+
     		For example, consider the following input:
-    
+
         ``` mlir
-    
+
     	  ````
-  
+
         After running, we get the expected:
-        
+
         ``` mlir
-        
+
       	```
       ]};
       let constructor = "mlir::xxxx::createPassNamePass()";
@@ -1368,10 +1520,10 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
       	"linalg::LinalgDialect",
       	"tensor::TensorDialect",
       ];
-  
+
 - passName.cpp中定义pass的实现
   xxxx/xxx/Transforms/PassName.cpp
-  
+
     ```cpp
     //===- passNamePass.cpp -----------------------------------------*- C++ -*-===//
     //
@@ -1388,12 +1540,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     #include "mlir/IR/Type.h"
     #include "mlir/Pass/Pass.h"
     #include "mlir/Support/LLVM.h"
-    
+
     #define DEBUG_TYPE "pass-flag"
-    
+
     using namespace mlir;
     using namespace mlir::xxxx;
-    
+
     namespace{
     // 相关代码runOperation()写在匿名空间，匿名空间可以限制标识符的作用域，防止全局空间污染
     struct PassNamePass : public PassNamePassBase<PassNamePass> {
@@ -1401,7 +1553,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	// 	 this->optionName.setValue(optionName);
     	// }
     	explicit PassNamePass() = default;
-    
+
     	void runOnOperation() override {
     		// 根据td中的作用域来返回，如果pass的td定义的作用域是mlir::ModuleOp,则这里返回moduleOp
     		auto targetOp = getOperation();
@@ -1409,25 +1561,25 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     		...
     		// 也可以使用pattern
     	}
-    
+
     }
     }; // end struct
-    
+
     } //namespace
-    
+
     // std::unique_ptr mlir::xxxx::createPassNamePass(option-input-type optionName)
     std::unique_ptr mlir::xxxx::createPassNamePass(){
     	// return std::make_unique<PassNamePass>(optionName);
     	return std::make_unique<PassNamePass>();
     }
     ```
-  
+
 - passName.mlir中添加对该pass的单元测试
   xxxx/xxx/Transforms/Test/PassName.mlir
-  
+
     ```cpp
     // RUN: mlir-opt -allow-unregistered-dialect %s -pass-pipeline='builtin.module(func.func(passname))' | FileCheck %s
-    
+
     func.func @example() -> () {
     	...
       return ...
@@ -1454,7 +1606,7 @@ mlir/lib/Pass/Pass.cpp
         // unique_ptr 申明独占资源，防止pass之间抢占资源
         void addPass(std::unique_ptr<Pass> pass);
         ```
-    
+
         ```cpp
         void mlir::bufferization::buildBufferDeallocationPipeline(
             OpPassManager &pm, const BufferDeallocationPipelineOptions &options) {
@@ -1468,7 +1620,7 @@ mlir/lib/Pass/Pass.cpp
 	      pm.addPass(createCanonicalizerPass());
         }
         ```
-    
+
     - addNestPass: 制定pass的作用op，常见的有FuncOp、ModuleOp，这个一般在 `pass.td` 中就定义该pass的作用域
         ```cpp
           void addNestedPass(std::unique_ptr<Pass> pass) {
@@ -1478,7 +1630,7 @@ mlir/lib/Pass/Pass.cpp
             return nest(OpT::getOperationName());
           }
         ```
-        
+
         ```cpp
         void mlir::tosa::addTosaToLinalgPasses(
             OpPassManager &pm, const TosaToLinalgOptions &options) {
@@ -1669,7 +1821,7 @@ using namespace mlir;
 LogicalResult SubOp::verify() {
   if (getLhs().getType() != getRhs().getType())
     return this->emitError() << "Lhs Type " << getLhs().getType()
-      << " not equal to rhs " << getRhs().getType(); 
+      << " not equal to rhs " << getRhs().getType();
   return success();
 }
 ```
@@ -1755,7 +1907,7 @@ Value 必然包含 Type，Type 也可以作为 Attribute 附加在 Operation 上
     - MemRefLayoutAttrInterface getLayout()
     - Attribute getMemorySpace()
     - getLayout()
-    
+
     ```cpp
      		SmallVector<Value, 4> dynamicOperands;
         for (int i = 0; i < memrefType.getRank(); ++i) {
@@ -1765,7 +1917,7 @@ Value 必然包含 Type，Type 也可以作为 Attribute 附加在 Operation 上
           dynamicOperands.push_back(dim);
         }
     ```
-    
+
     - getStridesAndOffset(MemRefType t, SmallVectorImpl<int64_t> **&**strides, int64_t **&**offset)
 
 常用方法，src : type (value::getType())
@@ -1818,7 +1970,7 @@ if (auto intAttr = range.size.dyn_cast<Attribute>()) {
 	Operation *op;
   if (BlockArgument arg = dyn_cast<BlockArgument>(value))
 		// getParentOp会返回包含该block的最近Operation
-    op = arg.getOwner()->getParentOp(); 
+    op = arg.getOwner()->getParentOp();
   else
     op = cast<OpResult>(value).getOwner();
   MemoryEffectOpInterface interface = dyn_cast<MemoryEffectOpInterface>(op);
@@ -1879,7 +2031,7 @@ llvm::all_of(llvm::zip(array, array.slice(1)), [](const auto& pair) {
 });
 
 llvm::find_if(shapeIndexs, [&](int64_t shapeIndex) {
-   return !oneSizeDimIndexsSet.count(shapeIndex); 
+   return !oneSizeDimIndexsSet.count(shapeIndex);
 });
 ```
 

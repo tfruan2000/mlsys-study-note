@@ -166,6 +166,7 @@ mask 为遮盖，类似decoder Attn中的mask。一是规范访存行为，防�
 
 - rep：每个config的重复时间，默认100ns
 
+
 ```python
 @triton.autotune(
     configs=[
@@ -182,6 +183,13 @@ mask 为遮盖，类似decoder Attn中的mask。一是规范访存行为，防�
 )
 ```
 
+**要求所有BLOCK_SIZE设置的值都得是2次幂**
+
+```python
+n_rows, n_cols = x.shape
+BLOCK_SIZE = triton.next_power_of_2(n_cols) 
+```
+
 ### grid
 
 调用kernel时，需要说明该kernel执行循环有几层，每层有几次，这就是 `grid` 的概念
@@ -190,6 +198,7 @@ mask 为遮盖，类似decoder Attn中的mask。一是规范访存行为，防�
 
 ```python
   grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
+  add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
 ```
 
 Triton中关于grid定义：
@@ -213,7 +222,7 @@ Triton中关于grid定义：
 ```cpp
   dim3 block(BLOCK_SIZE_M, BLOCK_SIZE_N);  
   dim3 grid((M + BLOCK_SIZE_M - 1) / BLOCK_SIZE_M, (N + BLOCK_SIZE_N - 1) / BLOCK_SIZE_N);
-  matmul_kernel<<<grid,block>>>(Ad, Bd, Cd, M, N, K);
+  matmul_kernel<<<grid, block>>>(Ad, Bd, Cd, M, N, K);
 ```
 
 ## special
@@ -379,6 +388,10 @@ tritongpu ir相比ttir仅多了一个Blocked Layout，本质上描述的是Block
 就是一个CTA里有4个Warp，一个Warp有32个Thread，一个Thread处理1个元素。
 
 Blocked Layout只是一种Pattern，但按照这个Pattern会多次访问，总访问量达到BLOCK_SIZE
+
+### num_stages
+
+compiler在软件流水时使用。软件流水优化一般会在kernel中插入循环，以实现对一个 `BLOCK_SIZE` 的数据进行分段计算
 
 ### layout
 

@@ -2,7 +2,6 @@
 # C++ 编程基础
 
 
-
 ## 常用
 
 ### 1. 智能指针
@@ -209,7 +208,7 @@ b = 20
 c = 20
 > 
 
-## 2.4 std::move
+### **2.4 std::move**
 
 std::move 用于将对象转为右值引用（计算完生命周期就结束，而且不会被修改，所以MLIR中的pattern传入applypattern函数一般使用std::move），常用于移动语义和避免不必要的拷贝操作
 
@@ -237,9 +236,7 @@ move(_LIBCPP_LIFETIMEBOUND _Tp&& __t) _NOEXCEPT {
 }
 ```
 
-
-
-## 2.5 std::forward
+### **2.5 std::forward**
 
 std::move和std::forward都是执行强制转换的函数。std::move 是无条件将实参转换成右值， std::forward 则仅在某个特定条件满足时执行同一个强制转换
 
@@ -2848,3 +2845,19 @@ int main()
     return 0;
 }
 ```
+
+## **8. std**
+
+### **8.1 std::pair**
+
+
+### **8.2 std::tuple**
+
+### **8.3 std::map**
+
+底层是红黑书实现的hash表，查找速度很快
+
+### **8.4 std::optional**
+
+该类型的对象a首先需要使用 `a.has_value()` 来判断值是否存在，然后使用 `a.value()` 或 `*a` 来获得值。
+
