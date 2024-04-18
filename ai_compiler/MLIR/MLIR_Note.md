@@ -160,32 +160,173 @@ mlir/include/mlir/IR/Builders.h
 mlir/lib/IR/Builders.cpp
 ```
 
-`Builder` 用于创建新的 MLIR 操作，例如各种 `Type`, `Attr`, `AffineMap` 等
+`Builder` 用于创建新的 MLIR 操作，例如各种 `Type`, `Attr`, `Affine Expressions` 等
 
-OpBuilder 继承自 Builder 类，额外提供了 `class InsertPoint` 和 `struct Listener`
+### OpBuilder
 
+OpBuilder 继承自 Builder 类，**额外提供了struct Listener和class InsertPoint**
 
+#### 常用函数
 
-### 主要元素
-
-- Listener
-
-目前的Kind有下面两种
+InsertPoint和Listener 相关函数如下
 
 ```cpp
-OpBuilderListener = 0,
-RewriterBaseListener = 1
+Listener *getListener() const { return listener; }
+void clearInsertionPoint();
+InsertPoint saveInsertionPoint();
+void setInsertionPoint(Block *block, Block::iterator insertPoint);
+void setInsertionPoint(Operation *op);
+void setInsertionPointAfter(Operation *op) {
+  setInsertPointPoint(op->getBlock(), Block::iterator(op));
+}
+void setInsertionPointAfterValue(Value val) {
+  if (Opeartion *op = val.getDefiningOp()) {
+    setInsertionPointAfter(op);
+  } else {
+    auto blockArg = llvm::cast<BlockArguement>(val);
+    setInsertionPointToStart(blockArg.getOwner());
+  }
+}
+void setInsertionPointToStart(Block *block);
+void setInsertionPointToEnd(Block *block);
+```
+
+create 相关函数如下
+
+```cpp
+Block *createBlock(Region *parent, Region::iterator insertPt = {},
+                   TypeRange argTypes = std::nullopt,
+                   ArrayRef<Location> locs = std::nullopt);
+// createBlock(&region, /*insertPt=*/{}, argTypes, argLocs);
+Operation *insert(Operation *op);
+Operation *create(const OperationState &state);
+```
+
+- OpTy create(loc, Args &&..args);
+先创建  `OperationState` 对象，再调用 `OpTy::build` 方法创建 `Operation` 对象
+- createOrFold
+返回值是 Value （也可以直接作为 OpFoldResult 使用)
+创建op后立即尝试fold，一般在创建某些有xxxOp.cpp中有opFoldPattern的op时使用，例如一些arith dialect 中的op 以及 memref.dim
+> 参见: mlir/lib/Dialect/Complex/IR/ComplexOps.cpp 和 mlir/lib/Dialect/MLU/IR/DimFoldInterfaceImpls.cpp
+
+clone 相关函数如下
+```cpp
+Operation *clone(Operation &op, IRMapping &mapper);
+Operation *clone(Operation &op);
+Operation *cloneWithoutRegions(Operation &op, IRMapping &mapper) {
+  return insert(op.cloneWithoutRegions(mapper));
+}
+Operation *cloneWithoutRegions(Operation &op) {
+  return insert(op.cloneWithoutRegions());
+}
+```
+
+例：使用linalg.reduce的region创建一个linalg.map
+
+```cpp
+Block *opBody = op.getBody();
+llvm::SmallVector<Value> bbArgs;
+for(Operation *opOperand : op.getOpOperandsMatchingBBargs()) {
+  bbArgs.emplace_back(opBody->getArgument(
+      opOperand->getOperandNumber()));
+}
+Value emptyOp = rewriter.create<tensor::EmptyOp>(
+    loc, initDims, dstType.getElementType());
+auto mapOp = rewriter.create<linalg::MapOp>(
+    loc, ValueRange(op.getDpsInputs()), emptyOp,
+    [&](OpBuilder &b, Location loc, ValueRange args) {});
+
+// 下面的代码等价于 rewriter.inlineRegionBefore(op->getRegion(0), mapOp->getRegion(0), mapOp->getRegion(0)->begion());
+Block *mapOpBody = mapOp.getBlock();
+SmallVector<BlockArgument> mapOpBbargs;
+for (OpOperand *opOperand : mapOp.getOpOperandsMatchingBBargs()) {
+  mapOpBbargs.emplace_back(mapOpBody->getArgument(opOperand->getOperandNumber());
+}
+assert(mapOpBbargs.size() == bbArgs.size());
+IRMapping bvm;
+for (auto [bbarg, newBBarg] : llvm::zip(bbArgs, mapOpBbargs)) {
+  bvm.map(bbarg, newBBarg);
+}
+rewriter.setInsertionPointToStart(mapOpBody);
+for (Operation &operation : *reduceOpBody) {
+  rewriter.clone(operation, bvm);
+}
 ```
 
 
+#### Listener
 
-### pattern rewriter
+Listener用于hook到OpBuilder的操作，Listener继承自 ListenerBase，ListenerBase有两种 kind
 
-用于重写（transform）现有 MLIR 操作的工具。它提供了一组方法，允许用户在遍历操作并修改它们时进行规则匹配和替换。
+```cpp
+// Listener() : ListenerBase(ListenerBase::Kind::OpBuilderListener)
+struct ListenerBase {
+  enum class Kind {
+    OpBuilderListener = 0,
+    RewriterBaseListener = 1
+  };
+  ...
+}
+```
+
+Listener常用两个函数为 `notifyOperationInserted(Operation *Op)` 和 `notifyBlockCreated(Block *block)`。自定义rewriter时，一般需要 `override` 这两个函数。
+
+### RewriterBase
 
 ```cpp
 mlir/include/mlir/IR/PatternMatch.h
+mlir/lib/IR/PatternMatch.cpp
 ```
+
+继承自 OpBuilder，且将 Listener 设置为 RewriterBaseListener
+
+```cpp
+class RewriterBase : public OpBuilder {
+public:
+  struct Listener : public OpBuilder::Listener {
+    Listener() : OpBuilder::Listener(Kind::RewriterBaseListener) {}
+  };
+}
+```
+
+常用函数：
+- notify ： 在正式对op修改前都需要调用notify，以便listener监听
+  - notifyOperationModified : in-place 修改
+  - notifyOperationReplaced
+    ```cpp
+    if (auto *listener = dyn_cast_if_present<RewriteBase::Listener>(rewriter.getListener())) {
+      listener->notifyOperationReplaced(op, existing);
+    }
+    rewriter.replaceAllUsesWith(op->getResults())
+    opsToErase.push_back(op);
+    ```
+  - notifyOperationRemoved
+
+#### ForwardingListener
+
+可以将所有 `notify` 发送给另外一个 `OpBuilder::Listener`，用于创建监听链条
+
+```cpp
+struct ForwardingListener : public RewriterBase::Listener {
+  ForwardingListener(OpBuilder::Listener *listener) : listener(listener) {}
+```
+
+#### IRRewriter
+
+继承自 `RewriteBase`当 PatternRewriter 不可用时才使用
+
+```cpp
+class IRRewriter : public RewriterBase {
+public:
+  explicit IRRewriter(MLIRContext *ctx, OpBuilder::Listener *listener = nullptr)
+      : RewriterBase(ctx, listener) {}
+  explicit IRRewriter(const OpBuilder &builder) : RewriterBase(builder) {}
+};
+```
+
+#### PatternRewriter
+
+继承自 `RewriteBase`， 用于重写（transform）现有 MLIR 操作的工具。它提供了一组方法，允许用户在遍历操作并修改它们时进行规则匹配和替换。
 
 `PatternRewriter &rewriter`
 
@@ -242,6 +383,8 @@ std::unique_ptr<pass> mlir::createAddOpPatPass() {
 	return std::make_unique<AddOpPatPass>;
 }
 ```
+
+
 
 ---
 
@@ -778,9 +921,10 @@ mlir/lib/IR/Dominance.cpp
 
 有一个 `SmallVector<DomTreeNodeBase *, 4> Children;`
 
-- begin() / end() 都是以 Children 为对象，所以遍历行为如下
+- begin() / end() 都是以 Children 为对象。下面的代码是CSE pass遇见多block的region的遍历行为
 
 ```cpp
+  // currentNode->node 就是 DominanceInfoNode，即 llvm::DomTreeNodeBase<Block>
   while (!stack.empty()) {
     auto &currentNode = stack.back();
     // 检查当前node是否被处理
@@ -1088,7 +1232,7 @@ llvm/include/llvm/ADT/STLExtras.h
 ### function
 - llvm:function_ref 定义inline func，用于传递函数指针
 
-### Array / Vector / Set
+### Array / Vector / Set / hash
 - llvm:ArrayRef
     - **轻量级数组引用，不进行内存分配或拷贝，适用于对已有数组进行访问而不修改的场景，是一个只读工具**
     - 常传入SmallVector或std::vector构造
@@ -1104,6 +1248,44 @@ llvm/include/llvm/ADT/STLExtras.h
         llvm::make_filter_range()
         llvm::map_range()
         ```
+
+- llvm:SetVector
+    - 将数组类型的对象转为SmallVector，常用来解决用ArrayRef构造SmallVector
+    - 用法
+      ```cpp
+      SmallVector<int64_t> dstShape(llvm::to_vector(windowTy.getShape()));
+      ```
+    - 源码
+      ```cpp
+      template <typename R>
+      SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
+        return {std::begin(Range), std::end(Range)};
+      }
+
+      template <typename RangeType>
+      // std::remove_const_t 用于移除模板参数类型的const修饰符
+      // std::remove_reference_t 用于移除模板参数类型的引用修饰符
+      // decltype 用于推断表达式的类型
+      // std::declval 用于创建模板类型的临时值
+      using ValueTypeFromRangeType =
+          std::remove_const_t<std::remove_reference_t<decltype(*std::begin(
+              std::declval<RangeType &>()))>>;
+      ```
+
+- llvm::seq
+    - 生成一个连续的序列，包含起始值，不包含结束值。 `seq_inclusive` 既包含起始值，也包含结束值。
+    - 用法
+        - 循环的范围 `for (auto idx : llvm::seq<int>(0, rank))`
+        - 创建个连续的`SmallVector<int64_t> res{llvm::to_vector(llvm::seq((int64_t)0, size))};`
+    - 源码
+      ```cpp
+      auto seq(T Begin, T End) {
+        return iota_range<T>(Begin, End, false);
+      }
+      auto seq(T Size) {
+        return seq<T>(0, Size);
+      }
+      ```
 
 - llvm:DenseSet
     - 常用方法
@@ -1148,43 +1330,21 @@ llvm/include/llvm/ADT/STLExtras.h
       }
       ```
 
-- llvm:SetVector
-    - 将数组类型的对象转为SmallVector，常用来解决用ArrayRef构造SmallVector
-    - 用法
+- llvm::ScopedHashTable
+    - 需要包含 key, value, keyInfo, AllocatorTy 四个参数，例如 CSE.cpp 中构造该类型:
       ```cpp
-      SmallVector<int64_t> dstShape(llvm::to_vector(windowTy.getShape()));
+      using ScopedMapTy = llvm::ScopedHashTable<Operation *, Operation *,
+          SimpleOperationInfo, AllocatorTy>
+      // SimpleOperationInfo 继承自 DenseMapInfo<Operation *>
+      // using AllocatorTy = llvm::RecyclingAllocator<llvm::BumpPtrAllocator, llvm::ScopedHashTableVal<Operation *, Operation *>>;
       ```
-    - 源码
+    - 实例化 `using ScopeTy = ScopedHashTableScope<K, V, KInfo, AllocatorTy>;`
       ```cpp
-      template <typename R>
-      SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
-        return {std::begin(Range), std::end(Range)};
-      }
-      
-      template <typename RangeType>
-      // std::remove_const_t 用于移除模板参数类型的const修饰符
-      // std::remove_reference_t 用于移除模板参数类型的引用修饰符
-      // decltype 用于推断表达式的类型
-      // std::declval 用于创建模板类型的临时值
-      using ValueTypeFromRangeType =
-          std::remove_const_t<std::remove_reference_t<decltype(*std::begin(
-              std::declval<RangeType &>()))>>;
+      ScopedMapTy::ScopeTy scope(knownValues);
       ```
+    - 使用函数
+      - V lookup(K key) : 在其中尝试查找key。一般来说 `SimpleOperationInfo` 都会有有自己的 `getHashValue` 和 `isEqual` 函数，这样就能根据key找到对应的value
 
-- llvm::seq
-    - 生成一个连续的序列，包含起始值，不包含结束值。 `seq_inclusive` 既包含起始值，也包含结束值。
-    - 用法
-        - 循环的范围 `for (auto idx : llvm::seq<int>(0, rank))`
-        - 创建个连续的`SmallVector<int64_t> res{llvm::to_vector(llvm::seq((int64_t)0, size))};`
-    - 源码
-      ```cpp
-      auto seq(T Begin, T End) {
-        return iota_range<T>(Begin, End, false);
-      }
-      auto seq(T Size) {
-        return seq<T>(0, Size);
-      }
-      ```
 
 ### make_range
 
@@ -1201,7 +1361,7 @@ llvm/include/llvm/ADT/STLExtras.h
         return make_range(map_iterator(std::begin(C), F),
                           map_iterator(std::end(C), F));
       }
-      
+
       template <typename ItTy, class FuncTy>
       inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
         return mapped_iterator<ItTy, FuncTy>(std::move(I), std::move(F));
@@ -1485,14 +1645,14 @@ public:
       // complex.neg(complex.neg(a)) -> a
       if (auto negOp = getOperand().getDefiningOp<NegOp>())
         return negOp.getOperand();
-    
+
       return {};
     }
     OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
       // complex.log(complex.exp(a)) -> a
       if (auto expOp = getOperand().getDefiningOp<ExpOp>())
         return expOp.getOperand();
-    
+
       return {};
     }
     ```
@@ -1535,17 +1695,17 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	let summary = "";
     	let description = [{
     		more detail
-  
+
     		For example, consider the following input:
-  
+
         ``` mlir
-  
+
     	  ````
 
         After running, we get the expected:
-      
+
         ``` mlir
-      
+
       	```
       ]};
       let constructor = "mlir::xxxx::createPassNamePass()";
@@ -1579,12 +1739,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     #include "mlir/IR/Type.h"
     #include "mlir/Pass/Pass.h"
     #include "mlir/Support/LLVM.h"
-  
+
     #define DEBUG_TYPE "pass-flag"
-  
+
     using namespace mlir;
     using namespace mlir::xxxx;
-  
+
     namespace{
     // 相关代码runOperation()写在匿名空间，匿名空间可以限制标识符的作用域，防止全局空间污染
     struct PassNamePass : public PassNamePassBase<PassNamePass> {
@@ -1592,7 +1752,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	// 	 this->optionName.setValue(optionName);
     	// }
     	explicit PassNamePass() = default;
-  
+
     	void runOnOperation() override {
     		// 根据td中的作用域来返回，如果pass的td定义的作用域是mlir::ModuleOp,则这里返回moduleOp
     		auto targetOp = getOperation();
@@ -1600,12 +1760,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     		...
     		// 也可以使用pattern
     	}
-  
+
     }
     }; // end struct
-  
+
     } //namespace
-  
+
     // std::unique_ptr mlir::xxxx::createPassNamePass(option-input-type optionName)
     std::unique_ptr mlir::xxxx::createPassNamePass(){
     	// return std::make_unique<PassNamePass>(optionName);
@@ -1618,7 +1778,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 
     ```cpp
     // RUN: mlir-opt -allow-unregistered-dialect %s -pass-pipeline='builtin.module(func.func(passname))' | FileCheck %s
-  
+
     func.func @example() -> () {
     	...
       return ...
@@ -1738,7 +1898,7 @@ mlir/lib/Pass/Pass.cpp
 mlir/include/mlir/IR/SymbolTable.h
 ```
 
-使用*'SymbolTable' trait*来表示Operation的特征表
+使用**SymbolTable trait**来表示Operation的特征表
 
 SymbolTable用法：
 
@@ -1768,6 +1928,7 @@ region包含若干个block，一般linalgOp都包含一个region
 
 ```c++
 mlir/include/mlir/Interfaces/SideEffectInterfaces.h
+mlir/lib/Interfaces/SideEffectInterfaces.cpp
 ```
 
 `sideeffect` 是一种用于表示函数或操作可能引起的副作用的概念。副作用是指对程序状态的任何更改，这可能包括但不限于内存写入、I/O 操作、全局状态的更改等。
@@ -1791,8 +1952,52 @@ mlir/include/mlir/Interfaces/SideEffectInterfaces.h
 常用方法，
 
 - isPure(Operation *op)
+
+- op.getEffect()
+一般传入一个 `SmallVector<SideEffects::EffectInstance<MemoryEffects::Effect>, 4>`
+```cpp
+void mlir::MemoryEffectOpInterface::getEffects(::llvm::SmallVectorImpl<::mlir::SideEffects::EffectInstance<::mlir::MemoryEffects::Effect>> & effects) {
+      return getImpl()->getEffects(getImpl(), getOperation(), effects);
+  }
+```
+
 - isMemoryEffectFree(Operation *op)
-- hasEffect(Operation *op, Value value = nullptr);
+    - NoMemoryEffect
+    - HasRecursiveMemoryEffects 且 所有 nested ops 都是 MemoryEffectFree
+
+- hasEffect(Operation *op, Value value = nullptr) : 判断op是否对value有副作用，如果没提供value，则判断op是否有副作用
+```cpp
+template <typename... EffectTys>
+auto memOp = dyn_cast<MeoryEffectOpInterface>(op);
+if (!memOp)
+  return false;
+SmallVector<SideEffects::EffectInstance<MemoryEffects::Effect>, 4> effects;
+memOp.getEffects(effects);
+return llvm::any_of(effects, [&](MemoryEffects::Effect effect) {
+  if (value && effect.getValue() != value)
+    return false;
+  return isa<EffectTys...>(effect.getEffect());
+});
+```
+
+- onlyHasEffect
+例如判断只有read effect
+```cpp
+if (!isMemoryEffectFree(op)) {
+  auto memEffects = dyn_cast<MemoryEffectOpInterface>(op);
+  if (!memEffects || !memEffects.onlyHasEffect<MemoryEffects::Read>())
+    return failure();
+}
+```
+
+
+- isOpTriviallyDead(Operation *op) : 当op没有使用者且不会引起副作用时，op就是trivially dead
+```cpp
+bool mlir::isOpTriviallyDead(Operation *op) {
+  return op->use_empty() && wouldOpBeTriviallyDead(op);
+}
+
+```
 
 ---
 
@@ -1894,11 +2099,59 @@ def SubOp : ToyOp<"sub", [Pure]> {
 
 ### OpTrait
 
-1.type infer
+```cpp
+mlir/include/mlir/IR/OpDefinition.h
+```
 
-- **SameOperandsAndResultType**：操作数和返回值有相同的类型，使用后 assemblyFormat 里就只需要写任何某一个操作数的类型
-- **InferTypeOpInterface**：通过输入和 attr 的类型推断返回值类型，自己写推断函数
-- **InferTypeOpAdaptor**：与上一个相似，但封装了一个 Adaptor，写起来会更简单
+用 `mightHaveTrait` 、 `hasTrait` 来判断
+
+1. OpDefine
+
+- SameTypeOperands : 所有operand type相同
+```cpp
+class Arith_CompareOp<string mnemonic, list<Trait> traits = []> :
+    Arith_Op<mnemonic, traits # [Pure, SameTypeOperands, TypesMatchWith<
+    "result type has i1 element type and same shape as operands",
+    "lhs", "result", "::getI1SameShape($_self)">]> {
+  let results = (outs BoolLike:$result);
+
+  let assemblyFormat = "$predicate `,` $lhs `,` $rhs attr-dict `:` type($lhs)";
+}
+```
+
+- SameOperandsAndResultType：操作数和返回值有相同的类型，使用后 assemblyFormat 里就只需要写任何某一个操作数的类型
+```cpp
+class Math_IntegerBinaryOp<string mnemonic, list<Trait> traits = []> :
+    Math_Op<mnemonic, traits # [SameOperandsAndResultType]> {
+  let arguments = (ins SignlessIntegerLike:$lhs, SignlessIntegerLike:$rhs);
+  let results = (outs SignlessIntegerLike:$result);
+
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+}
+```
+
+- InferTypeOpInterface ：通过输入和 attr 的类型推断返回值类型，自己写推断函数
+
+- InferTypeOpAdaptor ：与上一个相似，但封装了一个 Adaptor，写起来会更简单
+
+- ConstantLike : 代表该op是个constant op
+```cpp
+def LLVM_ConstantOp
+    : LLVM_Op<"mlir.constant", [Pure, ConstantLike]>,
+      LLVM_Builder<[{$res = getLLVMConstant($_resultType, $value, $_location,
+                                            moduleTranslation);}]>
+{
+  let summary = "Defines a constant of LLVM type.";
+  ...
+```
+
+2. 在pass时用来判断
+
+- IsIsolatedFromAbove ：表示该op不会读取或修改其父操作的任何值，有这个trait的op是不能被schedule的
+
+- IsTerminator : 表示该op是一个block的最后一个操作(terminator operations)
+
+
 
 ---
 
