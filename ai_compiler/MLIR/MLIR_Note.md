@@ -78,7 +78,7 @@ struct AbsOpToMathAbsConverter : public OpConversionPattern<mhlo::AbsOp> {
   using OpConversionPattern<mhlo::AbsOp>::OpConversionPattern;
   LogicalResult
   matchAndRewrite(mhlo::AbsOp op, OpAdaptor adaptor,
-                  PatternRewriter &rewriter) const final {
+                  ConversionPatternRewriter &rewriter) const final {
 ...
 struct TransposeSliceLayoutPattern : public OpRewritePattern<mhlo::SliceOp> {
   using OpRewritePattern<mhlo::SliceOp>::OpRewritePattern;
@@ -313,7 +313,7 @@ struct ForwardingListener : public RewriterBase::Listener {
 
 #### IRRewriter
 
-继承自 `RewriteBase`当 PatternRewriter 不可用时才使用
+继承自 `RewriteBase`，当 `PatternRewriter` 不可用时才使用
 
 ```cpp
 class IRRewriter : public RewriterBase {
@@ -326,11 +326,11 @@ public:
 
 #### PatternRewriter
 
-继承自 `RewriteBase`， 用于重写（transform）现有 MLIR 操作的工具。它提供了一组方法，允许用户在遍历操作并修改它们时进行规则匹配和替换。
+继承自 `RewriteBase`， 用于重写（transform）现有 MLIR 操作的工具。它提供了一组方法，允许用户在遍历操作并修改它们时进行规则匹配和替换。在rewrite pattern中才使用
 
 `PatternRewriter &rewriter`
 
-`ConversionPatternRewriter &rewriter`  :相比pattern rewriter要多传入一个adaptor
+`ConversionPatternRewriter &rewriter` : 相比pattern rewriter要多传入一个adaptor，详细见[Conversion](#conversion)节
 
 常用操作
 
@@ -383,6 +383,7 @@ std::unique_ptr<pass> mlir::createAddOpPatPass() {
 	return std::make_unique<AddOpPatPass>;
 }
 ```
+
 
 
 
@@ -502,17 +503,25 @@ func.func @matmul(%arg0: memref<12x9xf32, strided<[?, ?], offset: ?>>, %arg1: me
 
 前两种常用于dialect conversion，需要多传入一个`ConversionTarget`参数，greedilyConversion一般用于优化pass
 
+### ConversionTarget
+
+常用定义op
+
 ```cpp
 MLIRContext &ctx = getContext();
 ConversionTarget target(ctx);
 target.addIllegalDialect<SparseTensorDialect>();
 target.addLegalDialect
+target.addDynamicallyLegalDialect
 target.addLegalOp
 target.addDynamicallyLegalOp
+```
 
+例如只对标量op进行转换的pattern
+```cpp
 target.markUnknownOpDynamicallyLegal([](Operation *op) {
 	if (isa<math::MathDialect>(op->getDialect()) &&
-			llvm::isa<math::LogOp, math::ExpOp>(op)) {
+			llvm::isa<math::LogOp, math::ExpOp,...>(op)) {
 	   return op->getResultTypes().front().isa<ShapedType>();
   }
   return true;
@@ -525,7 +534,7 @@ if(failed(applyParticalCpnversion(getOperation(), target,
 	return signalPassFailure();
 ```
 
-ConversionPattern相比RewriterPattern多了一个adaptor，用于访问op的opernads
+ConversionPattern相比RewriterPattern一般多一个[adaptor](#adaptor)参数，用于访问op的opernads
 
 ```cpp
 // 常用于op的dialect2dialect下降
@@ -533,7 +542,7 @@ struct AbsOpToMathAbsConverter : public OpConversionPattern<mhlo::AbsOp> {
   using OpConversionPattern<mhlo::AbsOp>::OpConversionPattern;
   LogicalResult
   matchAndRewrite(mhlo::AbsOp op, OpAdaptor adaptor,
-                  PatternRewriter &rewriter) const final {
+                  ConversionPatternRewriter &rewriter) const final {
 
 // 常用于op的优化行为，也可以用于dialect2dialect中的op下降
 struct TransposeSliceLayoutPattern : public OpRewritePattern<mhlo::SliceOp> {
@@ -568,43 +577,26 @@ mlir/include/mlir/IR/PatternMatch.h
 以vector2gpu为例
 
 ```cpp
-// mlir/lib/Conversion/VectorToGPU/VectorToGPU.cpp
-// namespace内定义许多op rewrite patterns
+// mlir/lib/Conversion/ArithToSPIRV/ArithToSPIRV.cpp
+// namespace内定义许多op conversion patterns
 namespace{
-struct PrepareContractToGPUMMA:
-		: public OpRewritePattern<vector::TransposeOp>{
-	using OpRewritePattern<vector::TransposeOp>::OpRewritePattern;
-	LogicalResult matchAndRewrite(vector::TransposeOp,
-																PatternRewriter &rewriter) const override{
+struct ConstantCompositeOpPattern final
+    : public OpConversionPattern<arith::ConstantOp> {
+  using OpConversionPattern::OperationConversionPattern;
+  LogicalResult matchAndRewrite(arith::ConstantOp op,
+                                opAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const override {
 	...
 	}
 }
 ...
-void mlir::populateVectorToGPUConversionPattern(RewritePatternSet
-																															&patterns) {
-	patterns.add<PrepareContractToGPUMMA>(patterns.getContext());
+void mlir::populateArithToSPIRVPatterns(RewritePatternSet &patterns) {
+	patterns.add<ConstantCompositeOpPattern>(patterns.getContext());
 	// 可以设置pattern的/*benefit=*/
-	// patterns.add<PrepareContractToGPUMMA>(patterns.getContext(), /*benefit=*/2);
+	// patterns.add<ConstantCompositeOpPattern>(patterns.getContext(), /*benefit=*/2);
 	...
 }
 } // namespace
-
-namespace{
-class ConvertVectorToGPUPass
-	: public impl::ConvertVectorToGPUBase<ConvertVectorToGPUPass> {
-	explicit ConvertVectorToGPUPass() = default;
-
-	void runOnOperation() override {
-		RewritePatternSet patterns(&getContext());
-		populateVectorToGPUConversionPattern(patterns);
-		if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))));
-			return signalPassFailure();
-	}
-};
-} // namespace
-std::unique_ptr<Pass> mlir::createConvertVectorToGPUPass(){
-	return std::make_unique<ConvertVectorToGPUPass>();
-}3
 ```
 
 ### type conversion
@@ -613,16 +605,45 @@ std::unique_ptr<Pass> mlir::createConvertVectorToGPUPass(){
 mlir/Conversion/LLVMCommon/TypeConverter.h
 ```
 
-对type对改写一般通过 `typeConverter` ，其一般包含三个功能
+对type对改写一般通过 `typeConverter` ，常配合 `ConversionTarget` 使用。其一般包含三个主要函数
 
 - `addConversion` ：定义type转换规则
-- `addTargetMaterialization` ：sourceType→targetType
-- `addSourceMaterialization` ：targetType→sourceType
-
 ```cpp
 typeConverter converter;
 converter.addConversion([&]ToyIntegerType t) -> std::optional<Integer> {
 	return Integer::get(&getContext(), t.getWidth())
+}
+```
+
+- `addTargetMaterialization` ：sourceType→targetType
+- `addSourceMaterialization` ：targetType→sourceType
+
+```cpp
+static Value materializeToXXXCallback(OpBuilder &builder, Type type, ValueRange values) {
+  if (xxx)
+    ...
+  return nullptr;
+}
+```
+
+class MyTypeConvert : public TypeConverter {
+public:
+  MyTypeConvert() {
+    addConversion([](Type type)) -> Type {
+      if (isSomeType(type))
+        return ...;
+      return type;
+    });
+  }
+
+  addTargetMaterialization([](OpBuilder &builder, Type type, ValueRange values) {
+    if (...)
+      return builder.create<SomeOp>(type, values);
+    return nullptr;
+  });
+
+  addSourceMaterialization(materializeToXXXCallback);
+  addArgumentMaterialization(materializeToXXXCallback);
 }
 ```
 
