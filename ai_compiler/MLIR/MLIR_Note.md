@@ -87,6 +87,14 @@ struct TransposeSliceLayoutPattern : public OpRewritePattern<mhlo::SliceOp> {
                   OpRewritePattern &rewriter) const override {
 ```
 
+---
+
+## Analysis
+
+[Analysis_in_mlir](./composition/Analysis.md ':include')
+
+---
+
 ## Attribute
 
 ```cpp
@@ -166,9 +174,7 @@ mlir/lib/IR/Builders.cpp
 
 OpBuilder 继承自 Builder 类，**额外提供了struct Listener和class InsertPoint**
 
-#### 常用函数
-
-InsertPoint和Listener 相关函数如下
+#### InsertPoint
 
 ```cpp
 Listener *getListener() const { return listener; }
@@ -191,7 +197,7 @@ void setInsertionPointToStart(Block *block);
 void setInsertionPointToEnd(Block *block);
 ```
 
-create 相关函数如下
+#### create
 
 ```cpp
 Block *createBlock(Region *parent, Region::iterator insertPt = {},
@@ -209,7 +215,8 @@ Operation *create(const OperationState &state);
 创建op后立即尝试fold，一般在创建某些有xxxOp.cpp中有opFoldPattern的op时使用，例如一些arith dialect 中的op 以及 memref.dim
 > 参见: mlir/lib/Dialect/Complex/IR/ComplexOps.cpp 和 mlir/lib/Dialect/MLU/IR/DimFoldInterfaceImpls.cpp
 
-clone 相关函数如下
+#### clone
+
 ```cpp
 Operation *clone(Operation &op, IRMapping &mapper);
 Operation *clone(Operation &op);
@@ -253,8 +260,7 @@ for (Operation &operation : *reduceOpBody) {
 }
 ```
 
-
-#### Listener
+### Listener
 
 Listener用于hook到OpBuilder的操作，Listener继承自 ListenerBase，ListenerBase有两种 kind
 
@@ -292,7 +298,7 @@ public:
 常用函数：
 - notify ： 在正式对op修改前都需要调用notify，以便listener监听
   - notifyOperationModified : in-place 修改
-  - notifyOperationReplaced
+  - notifyOperationReplaced : 调用 replaceOp时触发
     ```cpp
     if (auto *listener = dyn_cast_if_present<RewriteBase::Listener>(rewriter.getListener())) {
       listener->notifyOperationReplaced(op, existing);
@@ -300,7 +306,27 @@ public:
     rewriter.replaceAllUsesWith(op->getResults())
     opsToErase.push_back(op);
     ```
-  - notifyOperationRemoved
+  - notifyOperationErased : 调用 earseOp时触发
+
+- modifyOpInPlace : 会调用 `startOpModification` 和 `finalizeOpModification`
+
+```cpp
+struct PrintOpLowering : public OpConversionPattern<toy::PrintOp> {
+  using OpConversionPattern<toy::PrintOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(toy::PrintOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const final {
+    // We don't lower "toy.print" in this pass, but we need to update its
+    // operands.
+    rewriter.modifyOpInPlace(op,
+                             [&] { op->setOperands(adaptor.getOperands()); });
+    return success();
+  }
+};
+```
+
+- replaceAllUsesWith
 
 #### ForwardingListener
 
@@ -323,6 +349,97 @@ public:
   explicit IRRewriter(const OpBuilder &builder) : RewriterBase(builder) {}
 };
 ```
+
+### PatternMatch
+
+#### PatternBenefit
+
+一般配合 `Pattern` 使用，表示一个pattern的benefit，benefit越高越先apply
+
+```cpp
+patterns.add<DoWhileLowering>(patterns.getContext(), /*benefit=*/2);
+```
+
+benefit的取值范围为 0到65535
+
+#### Pattern
+
+```cpp
+class Pattern {
+  /// This enum represents the kind of value used to select the root operations
+  /// that match this pattern.
+  enum class RootKind {
+    Any,
+    OperationName,
+    InterfaceID,
+    TraitID
+  };
+ ...
+```
+
+有match、rewrite、matchAndRewrite这些函数，也会设置 `PatternBenefit` (默认为1)
+
+#### RewritePattern
+
+继承自pattern
+
+```cpp
+  virtual LogicalResult matchAndRewrite(Operation *op,
+                                        PatternRewriter &rewriter) const {
+    if (succeeded(match(op))) {
+      rewrite(op, rewriter);
+      return success();
+    }
+    return failure();
+  }
+```
+
+一些子类：
+
+- OpOrInterfaceRewritePatternBase
+    - OpRewritePattern : 使用 SourceOp::getOperationName() 来match
+    - OpInterfaceRewritePattern : 使用 SourceOp::getInterfaceID() 来match
+- OpTraitRewritePattern
+    -  使用 TypeID::get<TraitType>() 来match
+    - 例如某些elementwiseTrait : `OpTraitRewritePattern<OpTrait::Elementwise>`
+
+#### RewritePatternSet
+
+```cpp
+  RewritePatternSet(MLIRContext *context,
+                    std::unique_ptr<RewritePattern> pattern)
+      : context(context) {
+    nativePatterns.emplace_back(std::move(pattern));
+  }
+```
+
+所以一般新建 `RewritePatternSet` 对象时都得传入 context
+
+```cpp
+RewritePatternSet patterns(&getContext());
+```
+
+然后再一些函数来归类pattern
+
+```cpp
+populateAffineToStdConversionPatterns(patterns);
+void mlir::populateAffineToStdConversionPatterns(RewritePatternSet &patterns) {
+    ...
+}
+```
+
+> 也可以通过[PDLL](#PDLL)来写pattern(包含constrict和rewrite)
+> `  RewritePatternSet(PDLPatternModule &&pattern)
+>       : context(pattern.getContext()), pdlPatterns(std::move(pattern)) {}`
+
+- add : 向set中添加pattern
+
+```cpp
+  add(LogicalResult (*implFn)(OpType, PatternRewriter &rewriter),
+      PatternBenefit benefit = 1, ArrayRef<StringRef> generatedNames = {})
+```
+
+- clear : 清空set中的pattern
 
 #### PatternRewriter
 
@@ -350,11 +467,11 @@ public:
         ```
 
 - 替换
-    - replace(Operation *op, Operation *newOp)
-    - replace(Operation *op, ValueRange newValues())
+    - replaceOp(Operation *op, Operation *newOp)
+    - replaceOp(Operation *op, ValueRange newValues())
         - 例如getResults()作为ValueRange输入
 - 消除
-    - earseOp(Operation *op)
+    - earseOp(Operation *op) : 如果要在pattern中删除op，最好使用 `rewriter.earseOp`，使用op自带的 `erase` 函数代码运行时会在debug模式出问题
     - earseBlock(Block *block)
 
 示例
@@ -1233,6 +1350,20 @@ llvm/include/llvm/ADT/STLExtras.h
         ```
 
 - any_of ：判断是否有元素满足条件
+    - 用法
+        ```cpp
+        	if (llvm::any_of(op->getRegions(), [](Region &r) {
+        			return r.getBlocks().size > 1;
+        		}))
+        	return failure();
+        ```
+    - 实现
+        ```cpp
+        template <typename R, typename UnaryPredicate>
+        bool any_of(R &&Range, UnaryPredicate P) {
+          return std::any_of(adl_begin(Range), adl_end(Range), P);
+        }
+        ```
 
 - none_of ：判断是否没有元素满足条件
 
@@ -1319,7 +1450,9 @@ llvm/include/llvm/ADT/STLExtras.h
 
 - llvm:DenseMap
     - 和std::map类似， <key, value>
-    - find / count
+    - find(返回iterator) / lookup(返回value或null)
+    - contains(返回true/false) / count(返回1/0)
+    - std::pair<iterator, bool> insert / try_emplace : 返回值的second为true时，表示原本的map中不能找到key，已新插入一个<key, val>的pair，并以该pair的iterator作为返回值的first
 
 - llvm::DenseMapInfo
     - hash表，只存key，`DenseMapInfo<T*>`
@@ -1688,7 +1821,7 @@ public:
 
 ---
 
-## pdll
+## PDLL
 
 ```cpp
 mlir/include/mlir/Dialect/PDL/IR/PDLTypes
@@ -2017,8 +2150,16 @@ if (!isMemoryEffectFree(op)) {
 bool mlir::isOpTriviallyDead(Operation *op) {
   return op->use_empty() && wouldOpBeTriviallyDead(op);
 }
-
 ```
+
+- getEffectsRecursively(Operation *rootOp) : 获得该root op和其nest op（一般指root op的region内的所有op）的memory Effect
+
+```cpp
+std::optional<llvm::SmallVector<MemoryEffects::EffectInstance>>
+mlir::getEffectsRecursively(Operation *rootOp)
+```
+
+
 
 ---
 
@@ -2303,6 +2444,47 @@ use.getOwner() —> Operation*
 
 - replaceAllUseWith(Value newValue)
 - replaceAllUsesExcept(Value newValue, Operation *exceptedUser)
+
+---
+
+## code style
+
+mlir的代码一般都得准守clang的format，简单的话可以使用 `git-clang-format` 工具
+
+当然也有相关的脚本，可以参考iree 的 [build_tools/scripts/lint.sh](https://github.com/iree-org/iree/blob/main/build_tools/scripts/lint.sh) 去魔改
+
+- 设置代码界限标识
+
+一般clang format以80字符为换行界限，所以可以在vscode中设置显示提示竖线
+
+1. 在设置中搜索 `editor.rulers`
+2. 在 `setting.json` 中添加
+
+```bash
+    "[cpp]": {
+        "editor.rulers": [
+            { "column": 80, "color": "#ff0000" }
+        ]
+    },
+```
+
+
+
+- 人为控制clang format开关
+
+可以通过注释来实现
+
+```cpp
+  // clang-format off
+  patterns.add<
+      AffineVectorLoadLowering,
+      AffineVectorStoreLowering>(patterns.getContext());
+  // clang-format on
+```
+
+
+
+
 
 ---
 
