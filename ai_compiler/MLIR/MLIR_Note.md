@@ -1401,6 +1401,10 @@ llvm/include/llvm/ADT/STLExtras.h
         llvm::map_range()
         ```
 
+- llvm::SmallVectorImpl
+    - SmallVector构造时调用的是 `SmallVector() : SmallVectorImpl<T>(N) {}`
+    - 写一个以SmallVector为参数的函数，如果传入的元素个数是固定的，建议使用`SmallVectorImpl` 作为形参，来避免**对堆栈元素的隐式数量进行硬编码**
+
 - llvm:SetVector
     - 将数组类型的对象转为SmallVector，常用来解决用ArrayRef构造SmallVector
     - 用法
@@ -1718,6 +1722,11 @@ Operation都包含Results和Operands；Results中包含多个OpResult实例，Op
 
 ## Operation
 
+```cpp
+mlir/include/mlir/IR/OperationSupport.h
+mlir/lib/IR/Operation.cpp
+```
+
 每个op本质上都是一个 `Operation` 的指针
 
 `Operation` 里面存了 OpName 和所有的 operands, results, attributes 和其它的东西
@@ -1727,6 +1736,8 @@ Operation都包含Results和Operands；Results中包含多个OpResult实例，Op
 <div style="text-align: center;"><img src="./img_MLIR_Note/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
 
 方法
+
+- OperationName opName = op->getName();
 
 - 获得父op
     - getParentOp()：返回该operation的最近的上一级op
