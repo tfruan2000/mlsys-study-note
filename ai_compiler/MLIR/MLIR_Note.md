@@ -470,6 +470,16 @@ void mlir::populateAffineToStdConversionPatterns(RewritePatternSet &patterns) {
     - replaceOp(Operation *op, Operation *newOp)
     - replaceOp(Operation *op, ValueRange newValues())
         - 例如getResults()作为ValueRange输入
+        
+    - replaceAllOpUsesWith(Operation \*from, ValueRange to) / replaceAllOpUsesWith(Opeation \*from, Operation \*to )
+    
+    - replaceUsesWithIf(Value from, Value to, func_ref) / replaceUsesWithIf(ValueRange from, Value to, func_ref) / replaceUsesWithIf(Operation \*op, Value to, func_ref)
+        ```cpp
+        rewriter.replaceAllUsesWithIf(workOp, forallOp->getResults(idx)
+        	[&](OpOperand use) {return !forallOp->isProperAncestor(use.getOwner())});
+        ```
+    
+    - replaceAllUsesExcept(Value from, Value to, Operation *exceptedUser)
 - 消除
     - earseOp(Operation *op) : 如果要在pattern中删除op，最好使用 `rewriter.earseOp`，使用op自带的 `erase` 函数代码运行时会在debug模式出问题
     - earseBlock(Block *block)
@@ -1275,6 +1285,53 @@ memref.view, memref.reshape, memref.reshape, memref.reinterpret_cast, memref.cas
   }
   ```
 
+### LoopLikeOpInterface
+
+在 `Ops.td` 中定义op时使用，例如
+
+```bash
+def AffineForOp : Affine_Op<"for",
+    [AttrSizedOperandSegments, AutomaticAllocationScope,
+     ImplicitAffineTerminator, ConditionallySpeculatable,
+     RecursiveMemoryEffects, DeclareOpInterfaceMethods<LoopLikeOpInterface,
+     ["getSingleInductionVar", "getSingleLowerBound", "getSingleStep",
+      "getSingleUpperBound", "getYieldedValuesMutable",
+      "replaceWithAdditionalYields"]>,
+     DeclareOpInterfaceMethods<RegionBranchOpInterface,
+     ["getEntrySuccessorOperands"]>]> {
+```
+
+相关op
+
+```cpp
+scf.for
+scf.forall
+scf.paralle
+scf.while
+affine.for
+affine.parallel
+```
+
+方法
+
+- 下界、上界、step
+
+    - `std::optional<::mlir::OpFoldResult> getSingleLowerBound`
+
+    - `std::optional<::mlir::OpFoldResult> getSingleUpperBound`
+
+    - `std::optional<::mlir::OpFoldResult> getSingleStep`
+
+- `mlir::Block::BlockArgListType getRegionIterArgs`
+- `mlir::ValueRange getYieldedValues()`
+
+返回yield给下一个iteration的值，可以返回为 {}
+
+- `std::optional<::mlir::ResultRange> getLoopResults()`
+- `bool isDefinedOutsideOfLoop(mlir::Value value)`
+
+判断输入value是否在loop region外定义
+
 ### OffsetSizeAndStrideOpInterface
 
 也属于 `ViewLikeOpInterface` ，可以通过 `llvm::cast<OffsetSizeAndStrideOpInterface>(op)` 获得
@@ -1371,7 +1428,7 @@ llvm/include/llvm/ADT/STLExtras.h
 
 - llvm::enumerate
     - 返回一个pair，first是index，second是value，直接对元素使用 `.index()` 和 `.value()` 即可
-    - 也可以使用 `auto [idx, val] : llvm::enumerate(inputs)`
+    - 也可以使用 `auto [idx, val] : llvm::enumerate(inputs)` / `auto [idx, val1, val2] : llvm::enumerate(inputs, outputs)`
     - 用法
         ```cpp
         auto isConsecute [](ArrayRef<int64_t> array) -> bool {
@@ -1417,7 +1474,7 @@ llvm/include/llvm/ADT/STLExtras.h
       SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
         return {std::begin(Range), std::end(Range)};
       }
-
+      
       template <typename RangeType>
       // std::remove_const_t 用于移除模板参数类型的const修饰符
       // std::remove_reference_t 用于移除模板参数类型的引用修饰符
@@ -1457,7 +1514,10 @@ llvm/include/llvm/ADT/STLExtras.h
     - find(返回iterator) / lookup(返回value或null)
     - contains(返回true/false) / count(返回1/0)
     - std::pair<iterator, bool> insert / try_emplace : 返回值的second为true时，表示原本的map中不能找到key，已新插入一个<key, val>的pair，并以该pair的iterator作为返回值的first
-
+        ```cpp
+        launchInfo.insert({candidateOp, replacementIndexes})
+        ```
+    
 - llvm::DenseMapInfo
     - hash表，只存key，`DenseMapInfo<T*>`
     - 使用 `getHashValue` 来获得hash值，最原始的方法是使用指针地址偏移计算的。但如果要实现自定义的hash，可以继承该类并重载 `getHashValue` 和 `isEqual` 方法
@@ -1519,7 +1579,7 @@ llvm/include/llvm/ADT/STLExtras.h
         return make_range(map_iterator(std::begin(C), F),
                           map_iterator(std::end(C), F));
       }
-
+      
       template <typename ItTy, class FuncTy>
       inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
         return mapped_iterator<ItTy, FuncTy>(std::move(I), std::move(F));
@@ -1528,6 +1588,24 @@ llvm/include/llvm/ADT/STLExtras.h
 
 - llvm::make_early_inc_range
     - 允许range中的元素被修改，且不影响iterator。例如遍历DenseMap对符合条件的iterator进行erase
+
+### find
+
+- llvm::find
+
+```cpp
+llvm::find(a.begin(), a.end(), val)
+```
+
+- llvm::find_if
+
+```cpp
+llvm::find_if(shapeIndexs, [&](int64_t shapeIndex) {
+   return !oneSizeDimIndexsSet.count(shapeIndex);
+});
+```
+
+tip: 如果需要在循环中查找，建议使用 `DenseSet`, `DenseMap` 类数据结构， `contains`, `find`, `count`等操作开销都小
 
 ### switch
 
@@ -1810,14 +1888,14 @@ public:
       // complex.neg(complex.neg(a)) -> a
       if (auto negOp = getOperand().getDefiningOp<NegOp>())
         return negOp.getOperand();
-
+    
       return {};
     }
     OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
       // complex.log(complex.exp(a)) -> a
       if (auto expOp = getOperand().getDefiningOp<ExpOp>())
         return expOp.getOperand();
-
+    
       return {};
     }
     ```
@@ -1860,17 +1938,17 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	let summary = "";
     	let description = [{
     		more detail
-
+  
     		For example, consider the following input:
-
+  
         ``` mlir
-
+  
     	  ````
 
         After running, we get the expected:
-
+      
         ``` mlir
-
+      
       	```
       ]};
       let constructor = "mlir::xxxx::createPassNamePass()";
@@ -1904,12 +1982,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     #include "mlir/IR/Type.h"
     #include "mlir/Pass/Pass.h"
     #include "mlir/Support/LLVM.h"
-
+  
     #define DEBUG_TYPE "pass-flag"
-
+  
     using namespace mlir;
     using namespace mlir::xxxx;
-
+  
     namespace{
     // 相关代码runOperation()写在匿名空间，匿名空间可以限制标识符的作用域，防止全局空间污染
     struct PassNamePass : public PassNamePassBase<PassNamePass> {
@@ -1917,7 +1995,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	// 	 this->optionName.setValue(optionName);
     	// }
     	explicit PassNamePass() = default;
-
+  
     	void runOnOperation() override {
     		// 根据td中的作用域来返回，如果pass的td定义的作用域是mlir::ModuleOp,则这里返回moduleOp
     		auto targetOp = getOperation();
@@ -1925,12 +2003,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     		...
     		// 也可以使用pattern
     	}
-
+  
     }
     }; // end struct
-
+  
     } //namespace
-
+  
     // std::unique_ptr mlir::xxxx::createPassNamePass(option-input-type optionName)
     std::unique_ptr mlir::xxxx::createPassNamePass(){
     	// return std::make_unique<PassNamePass>(optionName);
@@ -1943,7 +2021,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 
     ```cpp
     // RUN: mlir-opt -allow-unregistered-dialect %s -pass-pipeline='builtin.module(func.func(passname))' | FileCheck %s
-
+  
     func.func @example() -> () {
     	...
       return ...
@@ -2500,6 +2578,11 @@ mlir的代码一般都得准守clang的format，简单的话可以使用 `git-cl
 ---
 
 ## 其他好用的方法
+
+### 编程tip
+
+- 如果需要在循环中查找，建议使用 `DenseSet`, `DenseMap` 类数据结构， `contains`, `find`, `count`等操作开销都小
+- 函数使用引用传递，不要返回类型，会增加拷贝开销
 
 ### 重排序  `applyPermutationToVector`
 
