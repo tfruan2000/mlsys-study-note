@@ -470,15 +470,15 @@ void mlir::populateAffineToStdConversionPatterns(RewritePatternSet &patterns) {
     - replaceOp(Operation *op, Operation *newOp)
     - replaceOp(Operation *op, ValueRange newValues())
         - 例如getResults()作为ValueRange输入
-        
+
     - replaceAllOpUsesWith(Operation \*from, ValueRange to) / replaceAllOpUsesWith(Opeation \*from, Operation \*to )
-    
+
     - replaceUsesWithIf(Value from, Value to, func_ref) / replaceUsesWithIf(ValueRange from, Value to, func_ref) / replaceUsesWithIf(Operation \*op, Value to, func_ref)
         ```cpp
         rewriter.replaceAllUsesWithIf(workOp, forallOp->getResults(idx)
         	[&](OpOperand use) {return !forallOp->isProperAncestor(use.getOwner())});
         ```
-    
+
     - replaceAllUsesExcept(Value from, Value to, Operation *exceptedUser)
 - 消除
     - earseOp(Operation *op) : 如果要在pattern中删除op，最好使用 `rewriter.earseOp`，使用op自带的 `erase` 函数代码运行时会在debug模式出问题
@@ -906,7 +906,7 @@ mlir/include/mlir/IR/BuiltinTypes.h
 
 ### linalg
 
-常用op
+#### op
 
 - linalg.fill
 - linalg.map{ arith.op / math.op }
@@ -930,9 +930,26 @@ mlir/include/mlir/IR/BuiltinTypes.h
 - linalg.matmul
 - linalg.batch_matmul
 
+#### function
+
+- LinalgInterface
+  - bool hasDynamicShape()
+  - SmallVector<AffineMap> getIndexingMapsArray()
+    ```cpp
+    // 判断linalgOp是ElementwiseOp
+    auto isElementwiseLinalg = [](linalg::LinalgOp linalgOp) -> bool {
+      if (linalgOp.getNumDpsInints() != 1)
+        return false;
+      return llvm::all_of(linalgOp.getIndexingMapsArray(), [](AffineMap map) {
+        return map.isIdentity();
+      }) &&
+          hasOnlyScalarElementwiseOp(linalgOp->getRegion(0));
+    };
+    ```
+
 ### scf
 
-常用op
+#### op
 
 - scf.for
 - scf.forall / scf.parallel ： 循环body的程序是可以的并发执行，没有前后依赖的
@@ -954,7 +971,7 @@ mlir/include/mlir/IR/BuiltinTypes.h
 mlir/Dialect/Tensor/IR/Tensor.h
 ```
 
-常用op
+#### op
 
 - tensor.empty
 
@@ -1474,7 +1491,7 @@ llvm/include/llvm/ADT/STLExtras.h
       SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
         return {std::begin(Range), std::end(Range)};
       }
-      
+
       template <typename RangeType>
       // std::remove_const_t 用于移除模板参数类型的const修饰符
       // std::remove_reference_t 用于移除模板参数类型的引用修饰符
@@ -1501,6 +1518,7 @@ llvm/include/llvm/ADT/STLExtras.h
       ```
 
 - llvm:DenseSet
+    - set和map都是基于hash的，都是无序的
     - 常用方法
       - insert(const ValueT &V)
       - erase(Iterator I)
@@ -1517,7 +1535,7 @@ llvm/include/llvm/ADT/STLExtras.h
         ```cpp
         launchInfo.insert({candidateOp, replacementIndexes})
         ```
-    
+
 - llvm::DenseMapInfo
     - hash表，只存key，`DenseMapInfo<T*>`
     - 使用 `getHashValue` 来获得hash值，最原始的方法是使用指针地址偏移计算的。但如果要实现自定义的hash，可以继承该类并重载 `getHashValue` 和 `isEqual` 方法
@@ -1579,7 +1597,7 @@ llvm/include/llvm/ADT/STLExtras.h
         return make_range(map_iterator(std::begin(C), F),
                           map_iterator(std::end(C), F));
       }
-      
+
       template <typename ItTy, class FuncTy>
       inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
         return mapped_iterator<ItTy, FuncTy>(std::move(I), std::move(F));
@@ -1813,7 +1831,7 @@ mlir/lib/IR/Operation.cpp
 
 <div style="text-align: center;"><img src="./img_MLIR_Note/Untitled%202.png" alt="Untitled" style="width: 90%;"></div>
 
-方法
+### 常用方法
 
 - OperationName opName = op->getName();
 
@@ -1855,6 +1873,120 @@ if (xxx) {
 }
 ```
 
+### 注册op
+
+例如想新建一个linalg_ext.xxop
+
+参考：linalg.map的注册方法
+
+- 首先在 `td` 中注册
+
+```cpp
+// mlir/include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td
+
+def TensorOrMemref :
+  AnyTypeOf<[AnyMemRef, AnyRankedTensor], "", "::mlir::ShapedType">;
+
+def MapOp : LinalgStructuredBase_Op<"map", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+    SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "Elementwise operations";
+  let description = [{
+    Models elementwise operations on tensors in terms of arithmetic operations
+    on the corresponding elements.
+
+    Example:
+    ```
+      %add = linalg.map
+          ins(%lhs, %rhs : tensor<64xf32>, tensor<64xf32>)
+          outs(%init: tensor<64xf32>)
+          (%lhs_elem: f32, %rhs_elem: f32) {
+            %0 = arith.addf %lhs_elem, %rhs_elem: f32
+            linalg.yield %0: f32
+          }
+    ```
+
+    Shortened print form is available. Applies to simple maps with one
+    non-yield operation inside the body.
+
+    The example above will be printed as:
+    ```
+      %add = linalg.map { arith.addf }
+          ins(%lhs, %rhs : tensor<64xf32>, tensor<64xf32>)
+          outs(%init: tensor<64xf32>)
+    ```
+  }];
+
+  let arguments = (ins
+    // Input args
+    Variadic<TensorOrMemref>:$inputs,
+
+    // Output arg
+    TensorOrMemref:$init
+  );
+  let results = (outs Variadic<AnyTensor>:$result);
+  let regions = (region SizedRegion<1>:$mapper);
+
+  let builders = [
+    OpBuilder<(ins "ValueRange":$inputs, "Value":$init,
+      "function_ref<void(OpBuilder &, Location, ValueRange)>",
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>
+  ];
+
+  let extraClassDeclaration = structuredOpsBaseDecls # [{
+    // Implement functions necessary for LinalgStructuredInterface.
+    SmallVector<utils::IteratorType> getIteratorTypesArray();
+    ArrayAttr getIndexingMaps();
+    std::string getLibraryCallName() {
+      return "op_has_no_registered_library_name";
+    }
+
+    // Implement functions necessary for DestinationStyleOpInterface.
+    MutableOperandRange getDpsInitsMutable() { return getInitMutable(); }
+
+    SmallVector<OpOperand *> getOpOperandsMatchingBBargs() {
+      return getDpsInputOperands();
+    }
+
+    bool payloadUsesValueFromOperand(OpOperand * opOperand) {
+      if (isDpsInit(opOperand)) return false;
+      return !getMatchingBlockArgument(opOperand).use_empty();
+    }
+
+    static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+                              mlir::ArrayRef<mlir::NamedAttribute>)>
+    getRegionBuilder() {
+      return nullptr;
+    }
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+```
+
+- 然后在 `op.cpp` 中写 build 等方法
+```cpp
+// mlir/lib/Dialect/Linalg/IR/LinalgOps.cpp
+void MapOp::build(
+    OpBuilder &builder, OperationState &result, ValueRange inputs, Value init,
+    function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuild,
+    ArrayRef<NamedAttribute> attributes) {
+  build(builder, result, TypeRange{}, inputs, init);
+  result.addAttributes(attributes);
+
+  // Add output types for `RankedTensorType` output arguments.
+  Type initType = init.getType();
+  if (llvm::isa<RankedTensorType>(initType))
+    result.addTypes(initType);
+
+  if (bodyBuild)
+    buildGenericRegion(builder, result.location, *result.regions.front(),
+                       inputs, /*outputs=*/{}, bodyBuild);
+}
+```
+
 ---
 
 ## OpFoldResult
@@ -1888,14 +2020,14 @@ public:
       // complex.neg(complex.neg(a)) -> a
       if (auto negOp = getOperand().getDefiningOp<NegOp>())
         return negOp.getOperand();
-    
+
       return {};
     }
     OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
       // complex.log(complex.exp(a)) -> a
       if (auto expOp = getOperand().getDefiningOp<ExpOp>())
         return expOp.getOperand();
-    
+
       return {};
     }
     ```
@@ -1938,17 +2070,17 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	let summary = "";
     	let description = [{
     		more detail
-  
+
     		For example, consider the following input:
-  
+
         ``` mlir
-  
+
     	  ````
 
         After running, we get the expected:
-      
+
         ``` mlir
-      
+
       	```
       ]};
       let constructor = "mlir::xxxx::createPassNamePass()";
@@ -1982,12 +2114,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     #include "mlir/IR/Type.h"
     #include "mlir/Pass/Pass.h"
     #include "mlir/Support/LLVM.h"
-  
+
     #define DEBUG_TYPE "pass-flag"
-  
+
     using namespace mlir;
     using namespace mlir::xxxx;
-  
+
     namespace{
     // 相关代码runOperation()写在匿名空间，匿名空间可以限制标识符的作用域，防止全局空间污染
     struct PassNamePass : public PassNamePassBase<PassNamePass> {
@@ -1995,7 +2127,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	// 	 this->optionName.setValue(optionName);
     	// }
     	explicit PassNamePass() = default;
-  
+
     	void runOnOperation() override {
     		// 根据td中的作用域来返回，如果pass的td定义的作用域是mlir::ModuleOp,则这里返回moduleOp
     		auto targetOp = getOperation();
@@ -2003,12 +2135,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     		...
     		// 也可以使用pattern
     	}
-  
+
     }
     }; // end struct
-  
+
     } //namespace
-  
+
     // std::unique_ptr mlir::xxxx::createPassNamePass(option-input-type optionName)
     std::unique_ptr mlir::xxxx::createPassNamePass(){
     	// return std::make_unique<PassNamePass>(optionName);
@@ -2021,7 +2153,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 
     ```cpp
     // RUN: mlir-opt -allow-unregistered-dialect %s -pass-pipeline='builtin.module(func.func(passname))' | FileCheck %s
-  
+
     func.func @example() -> () {
     	...
       return ...
