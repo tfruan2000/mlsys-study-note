@@ -949,6 +949,10 @@ mlir/include/mlir/IR/BuiltinTypes.h
 
 ### scf
 
+```cpp
+mlir/lib/Dialect/SCF/IR/SCF.cpp
+```
+
 #### op
 
 - scf.for
@@ -963,6 +967,91 @@ mlir/include/mlir/IR/BuiltinTypes.h
           }
         }
     ```
+
+- scf.if
+
+	```cpp
+	Block *IfOp::thenBlock() { return &getThenRegion().back(); }
+	YieldOp IfOp::thenYield() { return cast<YieldOp>(&thenBlock()->back()); }
+	
+	auto cond = op.getCondition();
+	auto thenYieldArgs = op.thenYield().getOperands();
+	auto elseYieldArgs = op.elseYield().getOperands();
+	```
+
+	有一个 `scf.if` 的canonicalize pattern，叫 `ConvertTrivialIfToSelect`，可以尽量消除 else region
+
+	经常在 `bufferize` 后的 `canonicalize` 起效，因为`bufferize` 后 `scf.yield` 的operand更关系更明确了
+	
+	```llvm
+	// ./build/bin/mlir-opt mlir/lib/Dialect/SCF/IR/if.mlir --split-input-file --one-shot-bufferize --canonicalize
+	
+	// 不能命中，因为thenRegion的yield value属于thenRegion
+	// %1 = arith.cmpi slt, %arg1, %c0_i32 : i32
+	// %2 = scf.if %1 -> (memref<2xi32>) {
+	//   %alloc_0 = memref.alloc() {alignment = 64 : i64} : memref<2xi32>
+	//   linalg.map { math.absi } ins(%0 : memref<2xi32, strided<[?], offset: ?>>) outs(%alloc_0 : memref<2xi32>)
+	//   scf.yield %alloc_0 : memref<2xi32>
+	// } else {
+	//   scf.yield %alloc : memref<2xi32>
+	// }
+	func.func @test_if (%arg0 : tensor<2xi32>, %arg1 : i32) -> tensor<2xi32> {
+	  %cst = arith.constant 0 :i32
+	  %0 = tensor.empty() : tensor<2xi32>
+	  %1 = linalg.fill ins(%cst : i32) outs(%0 : tensor<2xi32>) -> tensor<2xi32>
+	  %2 = arith.cmpi slt, %arg1, %cst : i32
+	  %3 = scf.if %2 -> tensor<2xi32> {
+	    %4 = tensor.empty() : tensor<2xi32>
+	    %5 = linalg.map{math.absi} ins(%arg0 : tensor<2xi32>) outs(%4: tensor<2xi32>)
+	    scf.yield %5 : tensor<2xi32>
+	  } else {
+	    scf.yield %1 : tensor<2xi32>
+	  }
+	  return %3 : tensor<2xi32>
+	}
+	
+	// -----
+	// 可以命中，但不产生select，因为trueVal == falseVal
+	// %1 = arith.cmpi slt, %arg1, %c0_i32 : i32
+	// scf.if %1 {
+	//    linalg.map { math.absi } ins(%0 : memref<2xi32, strided<[?], offset: ?>>) outs(%alloc : memref<2xi32>)
+	func.func @test_if (%arg0 : tensor<2xi32>, %arg1 : i32) -> tensor<2xi32> {
+	  %cst = arith.constant 0 :i32
+	  %0 = tensor.empty() : tensor<2xi32>
+	  %1 = linalg.fill ins(%cst : i32) outs(%0 : tensor<2xi32>) -> tensor<2xi32>
+	  %2 = arith.cmpi slt, %arg1, %cst : i32
+	  %3 = scf.if %2 -> tensor<2xi32> {
+	    %5 = linalg.map{math.absi} ins(%arg0 : tensor<2xi32>) outs(%1: tensor<2xi32>)
+	    scf.yield %5 : tensor<2xi32>
+	  } else {
+	    scf.yield %1 : tensor<2xi32>
+	  }
+	  return %3 : tensor<2xi32>
+	}
+	
+	// -----
+	// 产生select
+	// %1 = arith.cmpi slt, %arg1, %c0_i32 : i32
+	// %2 = arith.select %1, %alloc, %alloc_0 : memref<2xi32>
+	// scf.if %1 {
+	//  linalg.map { math.absi } ins(%0 : memref<2xi32, strided<[?], offset: ?>>) outs(%alloc : memref<2xi32>)
+	func.func @test_if (%arg0 : tensor<2xi32>, %arg1 : i32) -> tensor<2xi32> {
+	  %cst = arith.constant 0 :i32
+	  %0 = tensor.empty() : tensor<2xi32>
+	  %1 = linalg.fill ins(%cst : i32) outs(%0 : tensor<2xi32>) -> tensor<2xi32>
+	  %cst1 = arith.constant 1 :i32
+	  %6 = tensor.empty() : tensor<2xi32>
+	  %7 = linalg.fill ins(%cst1 : i32) outs(%6 : tensor<2xi32>) -> tensor<2xi32>
+	  %2 = arith.cmpi slt, %arg1, %cst : i32
+	  %3 = scf.if %2 -> tensor<2xi32> {
+	    %5 = linalg.map{math.absi} ins(%arg0 : tensor<2xi32>) outs(%1: tensor<2xi32>)
+	    scf.yield %5 : tensor<2xi32>
+	  } else {
+	    scf.yield %7 : tensor<2xi32>
+	  }
+	  return %3 : tensor<2xi32>
+	}
+	```
 
 
 ### tensor
@@ -1455,7 +1544,18 @@ llvm/include/llvm/ADT/STLExtras.h
         };
         ```
 
+- llvm::zip
+
+	- 遍历时使用 `std::get<0>` 和 `std::get<1>` 来获得值
+	
+  ```cpp
+  for (const auto &it :llvm::enumerate(llvm::zip(valAVec, valBVec))) {
+	    Value aVal = std::get<0>(it.value());
+	    Value bVal = std::get<1>(it.value());
+	```
+
 ### function
+
 - llvm:function_ref 定义inline func，用于传递函数指针
 
 ### Array / Vector / Set / hash
