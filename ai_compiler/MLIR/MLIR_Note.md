@@ -1562,10 +1562,12 @@ llvm/include/llvm/ADT/STLExtras.h
 - llvm:ArrayRef
     - **轻量级数组引用，不进行内存分配或拷贝，适用于对已有数组进行访问而不修改的场景，是一个只读工具**
     - 常传入SmallVector或std::vector构造
+    - tips: `const &SmallVector` <==> `ArrayRef`
 
 - llvm:SmallVector
     - SmallVector<int64_t> srcDims(2, 1) 表示 初始化了两个元素，每个元素的值都是 `1`。
     - `SmallVector<int64_t, 2>` 表示包含 `int64_t` 元素的 `SmallVector` 类型，其中 `2` 是指定的初始大小
+    - **tips:如果能预先知道需要的size，就使用reserve先分配`
     - 其他
         ```c++
         llvm::reverse()
@@ -1591,7 +1593,7 @@ llvm/include/llvm/ADT/STLExtras.h
       SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
         return {std::begin(Range), std::end(Range)};
       }
-      
+
       template <typename RangeType>
       // std::remove_const_t 用于移除模板参数类型的const修饰符
       // std::remove_reference_t 用于移除模板参数类型的引用修饰符
@@ -1697,7 +1699,7 @@ llvm/include/llvm/ADT/STLExtras.h
         return make_range(map_iterator(std::begin(C), F),
                           map_iterator(std::end(C), F));
       }
-      
+
       template <typename ItTy, class FuncTy>
       inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
         return mapped_iterator<ItTy, FuncTy>(std::move(I), std::move(F));
@@ -2006,10 +2008,10 @@ def MapOp : LinalgStructuredBase_Op<"map", [
             linalg.yield %0: f32
           }
     ```
-    
+
     Shortened print form is available. Applies to simple maps with one
     non-yield operation inside the body.
-    
+
     The example above will be printed as:
     ```
       %add = linalg.map { arith.addf }
@@ -2044,16 +2046,16 @@ def MapOp : LinalgStructuredBase_Op<"map", [
 
     // Implement functions necessary for DestinationStyleOpInterface.
     MutableOperandRange getDpsInitsMutable() { return getInitMutable(); }
-    
+
     SmallVector<OpOperand *> getOpOperandsMatchingBBargs() {
       return getDpsInputOperands();
     }
-    
+
     bool payloadUsesValueFromOperand(OpOperand * opOperand) {
       if (isDpsInit(opOperand)) return false;
       return !getMatchingBlockArgument(opOperand).use_empty();
     }
-    
+
     static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
                               mlir::ArrayRef<mlir::NamedAttribute>)>
     getRegionBuilder() {
@@ -2120,14 +2122,14 @@ public:
       // complex.neg(complex.neg(a)) -> a
       if (auto negOp = getOperand().getDefiningOp<NegOp>())
         return negOp.getOperand();
-    
+
       return {};
     }
     OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
       // complex.log(complex.exp(a)) -> a
       if (auto expOp = getOperand().getDefiningOp<ExpOp>())
         return expOp.getOperand();
-    
+
       return {};
     }
     ```
@@ -2170,17 +2172,17 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	let summary = "";
     	let description = [{
     		more detail
-  
+
     		For example, consider the following input:
-  
+
         ``` mlir
-  
+
     	  ````
 
         After running, we get the expected:
-      
+
         ``` mlir
-      
+
       	```
       ]};
       let constructor = "mlir::xxxx::createPassNamePass()";
@@ -2214,12 +2216,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     #include "mlir/IR/Type.h"
     #include "mlir/Pass/Pass.h"
     #include "mlir/Support/LLVM.h"
-  
+
     #define DEBUG_TYPE "pass-flag"
-  
+
     using namespace mlir;
     using namespace mlir::xxxx;
-  
+
     namespace{
     // 相关代码runOperation()写在匿名空间，匿名空间可以限制标识符的作用域，防止全局空间污染
     struct PassNamePass : public PassNamePassBase<PassNamePass> {
@@ -2227,7 +2229,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	// 	 this->optionName.setValue(optionName);
     	// }
     	explicit PassNamePass() = default;
-  
+
     	void runOnOperation() override {
     		// 根据td中的作用域来返回，如果pass的td定义的作用域是mlir::ModuleOp,则这里返回moduleOp
     		auto targetOp = getOperation();
@@ -2235,12 +2237,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     		...
     		// 也可以使用pattern
     	}
-  
+
     }
     }; // end struct
-  
+
     } //namespace
-  
+
     // std::unique_ptr mlir::xxxx::createPassNamePass(option-input-type optionName)
     std::unique_ptr mlir::xxxx::createPassNamePass(){
     	// return std::make_unique<PassNamePass>(optionName);
@@ -2253,7 +2255,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 
     ```cpp
     // RUN: mlir-opt -allow-unregistered-dialect %s -pass-pipeline='builtin.module(func.func(passname))' | FileCheck %s
-  
+
     func.func @example() -> () {
     	...
       return ...
@@ -2963,6 +2965,9 @@ private:
   /// Operations can be wrapped using one loop.
   llvm::SmallVector<Operation *> opsToWrapTogather;
 
+  /// Record the visited ops.
+  llvm::DenseSet<Operation*> visited;
+
   /// The result number of scf.forall.
   unsigned replacementCount;
 
@@ -2980,10 +2985,20 @@ void WrapDriver::createWrapToLaunch() {
   // ...
 }
 
-unsigned replacementNum;
 void WrapDriver::processOnOp(Operation* op) {
-  if (opsLaunchInfo.contains(op)) {
+  if (visited.contains(op)) {
+    // The op has been visited.
     return;
+  }
+  // Mark the op has been visited.
+  visited.insert(op);
+
+  for (auto operand : op->getOperands()) {
+    if (auto *operandOp = operand.getDefiningOp()) {
+      if (checkOpIfNeedLaunch(operandOp)) {
+        processOnOp(operandOp);
+      }
+    }
   }
 
   opsLaunchInfo.try_emplace(op);
@@ -3012,7 +3027,7 @@ void WrapDriver::processOnFunc(func::FuncOp funcOp) {
   });
 
   for (auto *candidateOp : workList) {
-    if (opsLaunchInfo.contains(candidateOp))
+    if (visited.contains(candidateOp))
       continue;
     opsToWrapTogather.clear();
     replacementCount = 0;
