@@ -475,10 +475,11 @@ void mlir::populateAffineToStdConversionPatterns(RewritePatternSet &patterns) {
 
     - replaceUsesWithIf(Value from, Value to, func_ref) / replaceUsesWithIf(ValueRange from, Value to, func_ref) / replaceUsesWithIf(Operation \*op, Value to, func_ref)
         ```cpp
+        // 替换forallOp外的使用
         rewriter.replaceAllUsesWithIf(workOp, forallOp->getResults(idx)
         	[&](OpOperand use) {return !forallOp->isProperAncestor(use.getOwner())});
         ```
-
+        
     - replaceAllUsesExcept(Value from, Value to, Operation *exceptedUser)
 - 消除
     - earseOp(Operation *op) : 如果要在pattern中删除op，最好使用 `rewriter.earseOp`，使用op自带的 `erase` 函数代码运行时会在debug模式出问题
@@ -822,7 +823,7 @@ for (auto &opOperand : op3.getOpOperands()) {
 - getDefiningOp：可能返回nul
 - getUses ：返回OpOperand迭代器，即使用了这个value的OpOperand集合
 OpOperand &operand : value.getUses()
-- getUser ：返回Operation迭代器，即直接依赖于该value的operation集合
+- getUsers ：返回Operation迭代器，即直接依赖于该value的operation集合
 user_iterator相当于对use_iterator使用getOwner()
 use.getOwner() → Operation*
 
@@ -900,6 +901,20 @@ mlir/include/mlir/IR/BuiltinTypes.h
 
 ---
 
+## Debug
+
+```cpp
+#include "llvm/include/llvm/Support/Debug.h"
+LLVM_DEBUG(llvm::dbgs() << "Original loop:\n"
+                        << *region->getParentOp() << "\n");
+LLVM_DEBUG(llvm::dbgs() << "Checking op: " << *op << "\n");
+```
+
+
+
+
+---
+
 ## Dialect
 
 新增一个dialect可以参考最近mlir中新增的[polynomial dialect](https://github.com/llvm/llvm-project/commit/55b6f17071d25b77fcdc910ca9b15f89305137e0) ，然后就是补充各种dialect2dialect的conversion了
@@ -961,13 +976,12 @@ mlir/lib/Dialect/SCF/IR/SCF.cpp
   从scf到launch这种转换是可以通过代码自动完成的，需要的额外信息就是每一个循环的轴到launch的轴的映射关系
 
     ```llvm
-    scf.forall (%thread_id_1, %thread_id_2) in
-             (%num_threads_1, %num_thread_2) {
+    scf.forall (%thread_id_1, %thread_id_2) in (%num_threads_1, %num_thread_2) {
              // ...
           }
         }
     ```
-
+  
 - scf.if
 
 	```cpp
@@ -984,7 +998,7 @@ mlir/lib/Dialect/SCF/IR/SCF.cpp
 	经常在 `bufferize` 后的 `canonicalize` 起效，因为`bufferize` 后 `scf.yield` 的operand更关系更明确了
 	
 	```llvm
-	// ./build/bin/mlir-opt mlir/lib/Dialect/SCF/IR/if.mlir --split-input-file --one-shot-bufferize --canonicalize
+	// ./build/bin/mlir-opt test_if.mlir --split-input-file --one-shot-bufferize --canonicalize
 	
 	// 不能命中，因为thenRegion的yield value属于thenRegion
 	// %1 = arith.cmpi slt, %arg1, %c0_i32 : i32
@@ -1132,6 +1146,16 @@ struct MatmulOpInterface : public AggregatedOpInterface::ExternalModel<
 	}
 };
 ```
+
+---
+
+## Diagnostic
+
+```cpp
+mlir/include/mlir/IR/Diagnostics.h
+```
+
+
 
 ---
 
@@ -1302,6 +1326,15 @@ bool InlinerInterface::isLegalToInline(Operation *op, Region *dest,
 
 对于有该interface的op可以cast成该interface `llvm::cast<TilingInterface>(op)`
 
+- TilingResult类
+
+```cpp
+struct TilingResult {
+    SmallVector<Operation *> tiledOps;
+    SmallVector<Value> tiledValues; // 来自
+}
+```
+
 - getLoopIteratorTypes：每个元素为utils::IteratorType，表示为utils::IteratorType::parallel或utils::IteratorType::reduction
 
 - getIterationDomain：每个元素是一个Range
@@ -1400,6 +1433,7 @@ def AffineForOp : Affine_Op<"for",
     [AttrSizedOperandSegments, AutomaticAllocationScope,
      ImplicitAffineTerminator, ConditionallySpeculatable,
      RecursiveMemoryEffects, DeclareOpInterfaceMethods<LoopLikeOpInterface,
+     // 定义函数
      ["getSingleInductionVar", "getSingleLowerBound", "getSingleStep",
       "getSingleUpperBound", "getYieldedValuesMutable",
       "replaceWithAdditionalYields"]>,
@@ -1410,8 +1444,8 @@ def AffineForOp : Affine_Op<"for",
 相关op
 
 ```cpp
-scf.for
-scf.forall
+scf.for : 使用 scf.yield 返回
+scf.forall : 使用 scf.forall.in_parallel + tensor.parallel_insert_slice
 scf.paralle
 scf.while
 affine.for
@@ -1434,9 +1468,171 @@ affine.parallel
 返回yield给下一个iteration的值，可以返回为 {}
 
 - `std::optional<::mlir::ResultRange> getLoopResults()`
+- `void moveOutOfLoop(op)` 将op移出loop
 - `bool isDefinedOutsideOfLoop(mlir::Value value)`
 
 判断输入value是否在loop region外定义
+
+-  FailureOr<LoopLikeOpInterface> replaceWithAdditionalYields(RewiterBase &rewriter, ValueRange newInitOperands, bool replaceInitOperandUsesInLoop,  NewYieldValuesFn newYieldValuesFn)
+
+```cpp
+if (extractionOp && insertionOp) {
+  // Create a new loop with an additional iter_arg.
+  NewYieldValuesFn newYieldValuesFn =
+      [&](OpBuilder &b, Location loc,
+          ArrayRef<BlockArgument> innerNewBBArgs) -> SmallVector<Value> {
+    return {insertionOp.getSourceOperand().get()};
+  };
+  // 新的yield对应的bbArg的initOp是extractionOp.getResult()
+  // 再以insertOp的source作为该yeild的operand
+  FailureOr<LoopLikeOpInterface> newLoop =
+      loopLike.replaceWithAdditionalYields(
+          rewriter, extractionOp.getResult(),
+          /*replaceInitOperandUsesInLoop=*/true, newYieldValuesFn);
+```
+
+- OpResult getTiedLoopResult(BlockArgument bbArg) / OpResult getTiedLoopResult(OpOperand *opOperand)
+    获得 `loopResults`（由getLoopResults()获得） 中该bbArg对应的值。
+
+```cpp
+// %a 对应 %res#0, %b 对应 %res#1
+%res:2 = scf.forall(%arg3) in (1) shared_outs(%a = %empty0, %b =%empty1) -> (tensor<?xf32>, tensor<?xf32>)
+```
+
+- OpOperand *getTiedLoopInit(BlockArgument bbArg)
+
+获得这个bbArg对应的loopInit，例如上面代码中 `%a` 对应的 loopInit 就是 `%empty0`
+
+
+
+### SubsetOpInterface
+
+用法
+
+- `bool operatesOnEquivalentSubset(SubsetOpInterface candidate, function_ref<bool(Value, Value)> equivalenceFn)`
+    判断this op 是否和 candidate 一起负责一个subset
+- `bool operatesOnDisjointSubset(SubsetOpInterface candidate, function_ref<bool(Value, Value)> equivalenceFn)`
+
+```cpp
+// 获得loop中的 SubsetExtractionOpInterface 和 SubsetInsertionOpInterface 对应
+  SmallVector<SubsetExtractionOpInterface> extractions;
+  SmallVector<SubsetInsertionOpInterface> insertions;
+  void insertExtractionOp(SubsetExtractionOpInterface extractionOp) {
+    for (auto it : llvm::enumerate(insertions)) {
+      if (!it.value())
+        continue;
+      auto other = cast<SubsetOpInterface>(it.value().getOperation());
+      if (other.operatesOnEquivalentSubset(extractionOp, isEquivalent)) {
+        extractions[it.index()] = extractionOp;
+        return;
+      }
+    }
+    // There is no known equivalent insertion op. Create a new entry.
+    extractions.push_back(extractionOp);
+    insertions.push_back({});
+  }
+
+  void insertInsertionOp(SubsetInsertionOpInterface insertionOp) {
+    for (auto it : llvm::enumerate(extractions)) {
+      if (!it.value())
+        continue;
+      auto other = cast<SubsetOpInterface>(it.value().getOperation());
+      if (other.operatesOnEquivalentSubset(insertionOp, isEquivalent)) {
+        insertions[it.index()] = insertionOp;
+        return;
+      }
+    }
+    // There is no known equivalent extraction op. Create a new entry.
+    extractions.push_back({});
+    insertions.push_back(insertionOp);
+  }
+```
+
+子interface
+
+- SubsetExtractionOpInterface 
+
+    - `OpOperand getSourceOperand()` 
+- SubsetInsertionOpInterface
+
+    - `OpOperand getSourceOperand()` 
+
+    - `OpOperand getDestinationOperand()`
+
+    - `OpResult getUpdatedDestination()` : 返回该op的result_tensor
+      
+        ```cpp
+        OpResult detail::defaultGetUpdatedDestination(Operation *op) {
+          auto dstOp = dyn_cast<DestinationStyleOpInterface>(op);
+          assert(dstOp && "getUpdatedDestination must be implemented for non-DPS ops");
+          auto insertionOp = cast<SubsetInsertionOpInterface>(op);
+          return dstOp.getTiedOpResult(&insertionOp.getDestinationOperand());
+        }
+        ```
+        
+
+相关使用：将extractOp和insertOp提升到loop外
+
+```cpp
+// mlir/lib/Transforms/Utils/LoopInvariantCodeMotionUtils.cpp
+// Hoist the extraction/insertion ops.
+iterArg = loopLike.getRegionIterArgs()[iterArgIdx];
+OpResult loopResult = loopLike.getTiedLoopResult(iterArg);
+OpResult newLoopResult = loopLike.getLoopResults()->back();
+rewriter.moveOpBefore(extractionOp, loopLike);
+rewriter.moveOpAfter(insertionOp, loopLike);
+// insertOp外提后，就需要使用loop内还有的value来替换yield的输出
+rewriter.replaceAllUsesWith(insertionOp.getUpdatedDestination(),
+                            insertionOp.getDestinationOperand().get());
+// extractOp提到loop外后，就需要使用对应的loopInitOp作为sourceOp
+extractionOp.getSourceOperand().set(loopLike.getTiedLoopInit(iterArg)->get());
+// 使用insertOp的result替换func.return的使用
+rewriter.replaceAllUsesWith(loopResult, insertionOp.getUpdatedDestination());
+// insertOp提出loop后，source要变成newLoopResult，dst要变成loopResult
+insertionOp.getSourceOperand().set(newLoopResult);
+insertionOp.getDestinationOperand().set(loopResult);
+```
+
+以下面的代码为例
+
+```cpp
+iterArg : %t
+loopResult : %5#0
+newLoopResult : %5#1
+loopLike.getTiedLoopInit(iterArg)->get() : %arg0
+对extractOp而言
+- getSourceOperand() -> %t
+对insertOp而言
+- getSourceOperand() -> %2
+- getDestinationOperand() -> %t
+- getUpdatedDestination() -> %3
+```
+
+```cpp
+  %0 = scf.for %iv = %lb to %ub step %step iter_args(%t = %arg0) -> (tensor<?xf32>) {
+    %standalone = tensor.extract_slice %t[9][5][1] : tensor<?xf32> to tensor<5xf32>
+    "test.foo"(%standalone) : (tensor<5xf32>) -> ()
+    %1 = tensor.extract_slice %t[0][5][1] : tensor<?xf32> to tensor<5xf32>
+    %2 = "test.foo"(%1) : (tensor<5xf32>) -> (tensor<5xf32>)
+    %3 = tensor.insert_slice %2 into %t[%sub][5][1] : tensor<5xf32> into tensor<?xf32>
+    scf.yield %3 : tensor<?xf32>
+  }
+  return %0 : tensor<?xf32>
+      
+// convert to
+    %extracted_slice = tensor.extract_slice %arg0[0] [5] [1] : tensor<?xf32> to tensor<5xf32>
+    %5:2 = scf.for %arg1 = %0 to %1 step %2 iter_args(%arg2 = %arg0, %arg3 = %extracted_slice) -> (tensor<?xf32>, tensor<5xf32>) {
+      %extracted_slice_0 = tensor.extract_slice %arg2[9] [5] [1] : tensor<?xf32> to tensor<5xf32>
+      "test.foo"(%extracted_slice_0) : (tensor<5xf32>) -> ()
+      %6 = "test.foo"(%arg3) : (tensor<5xf32>) -> tensor<5xf32>
+      scf.yield %arg2, %6 : tensor<?xf32>, tensor<5xf32>
+    }
+    %inserted_slice = tensor.insert_slice %5#1 into %5#0[%4] [5] [1] : tensor<5xf32> into tensor<?xf32>
+    return %inserted_slice : tensor<?xf32>
+```
+
+
+
 
 ### OffsetSizeAndStrideOpInterface
 
@@ -1558,6 +1754,24 @@ llvm/include/llvm/ADT/STLExtras.h
 
 - llvm:function_ref 定义inline func，用于传递函数指针
 
+`using function_ref = llvm::function_ref<Fn>`
+
+```cpp
+size_t mlir::moveLoopInvariantCode(
+    ArrayRef<Region *> regions,
+    function_ref<bool(Value, Region *)> isDefinedOutsideRegion, // 调用点
+    ...
+
+size_t mlir::moveLoopInvariantCode(LoopLikeOpInterface loopLike) {
+  return moveLoopInvariantCode(
+      loopLike.getLoopRegions(),
+      [&](Value value, Region *) {
+        return loopLike.isDefinedOutsideOfLoop(value);
+      }, // 定义点，传递了一个lambda函数
+```
+
+
+
 ### Array / Vector / Set / hash
 - llvm:ArrayRef
     - **轻量级数组引用，不进行内存分配或拷贝，适用于对已有数组进行访问而不修改的场景，是一个只读工具**
@@ -1593,7 +1807,7 @@ llvm/include/llvm/ADT/STLExtras.h
       SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
         return {std::begin(Range), std::end(Range)};
       }
-
+      
       template <typename RangeType>
       // std::remove_const_t 用于移除模板参数类型的const修饰符
       // std::remove_reference_t 用于移除模板参数类型的引用修饰符
@@ -1699,7 +1913,7 @@ llvm/include/llvm/ADT/STLExtras.h
         return make_range(map_iterator(std::begin(C), F),
                           map_iterator(std::end(C), F));
       }
-
+      
       template <typename ItTy, class FuncTy>
       inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
         return mapped_iterator<ItTy, FuncTy>(std::move(I), std::move(F));
@@ -1909,7 +2123,7 @@ mlir/include/mlir/IR/Operation.h
 
 ```cpp
 OpOperand a;
-Value a->get()
+Value b = a->get()
 ```
 
 Operation都包含Results和Operands；Results中包含多个OpResult实例，Operands中包含多个OpOperand实例
@@ -1956,6 +2170,7 @@ mlir/lib/IR/Operation.cpp
         }
         ```
 
+- getParentRegion 返回包含该op的region，也可以返回nullptr
 - getBlock 返回父block，而不是当前op的block
 - getBody 返回当前op内部的block或region
 - getOperands()
@@ -1964,8 +2179,8 @@ mlir/lib/IR/Operation.cpp
 - 转换为目标op
     - cast<AddOp>(op)
     - dyn_cast<AddOp>(op)
-- getUses() / getUser()
-相当于这个operation的所有result的use / user的集合
+- getUses() / getUsers()
+相当于这个operation的所有result的use / user（其实就是operation *）的集合
 - emitOpError
 
 ```cpp
@@ -2008,10 +2223,10 @@ def MapOp : LinalgStructuredBase_Op<"map", [
             linalg.yield %0: f32
           }
     ```
-
+    
     Shortened print form is available. Applies to simple maps with one
     non-yield operation inside the body.
-
+    
     The example above will be printed as:
     ```
       %add = linalg.map { arith.addf }
@@ -2046,16 +2261,16 @@ def MapOp : LinalgStructuredBase_Op<"map", [
 
     // Implement functions necessary for DestinationStyleOpInterface.
     MutableOperandRange getDpsInitsMutable() { return getInitMutable(); }
-
+    
     SmallVector<OpOperand *> getOpOperandsMatchingBBargs() {
       return getDpsInputOperands();
     }
-
+    
     bool payloadUsesValueFromOperand(OpOperand * opOperand) {
       if (isDpsInit(opOperand)) return false;
       return !getMatchingBlockArgument(opOperand).use_empty();
     }
-
+    
     static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
                               mlir::ArrayRef<mlir::NamedAttribute>)>
     getRegionBuilder() {
@@ -2122,14 +2337,14 @@ public:
       // complex.neg(complex.neg(a)) -> a
       if (auto negOp = getOperand().getDefiningOp<NegOp>())
         return negOp.getOperand();
-
+    
       return {};
     }
     OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
       // complex.log(complex.exp(a)) -> a
       if (auto expOp = getOperand().getDefiningOp<ExpOp>())
         return expOp.getOperand();
-
+    
       return {};
     }
     ```
@@ -2172,17 +2387,17 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	let summary = "";
     	let description = [{
     		more detail
-
+  
     		For example, consider the following input:
-
+  
         ``` mlir
-
+  
     	  ````
 
         After running, we get the expected:
-
+      
         ``` mlir
-
+      
       	```
       ]};
       let constructor = "mlir::xxxx::createPassNamePass()";
@@ -2216,12 +2431,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     #include "mlir/IR/Type.h"
     #include "mlir/Pass/Pass.h"
     #include "mlir/Support/LLVM.h"
-
+  
     #define DEBUG_TYPE "pass-flag"
-
+  
     using namespace mlir;
     using namespace mlir::xxxx;
-
+  
     namespace{
     // 相关代码runOperation()写在匿名空间，匿名空间可以限制标识符的作用域，防止全局空间污染
     struct PassNamePass : public PassNamePassBase<PassNamePass> {
@@ -2229,7 +2444,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     	// 	 this->optionName.setValue(optionName);
     	// }
     	explicit PassNamePass() = default;
-
+  
     	void runOnOperation() override {
     		// 根据td中的作用域来返回，如果pass的td定义的作用域是mlir::ModuleOp,则这里返回moduleOp
     		auto targetOp = getOperation();
@@ -2237,12 +2452,12 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
     		...
     		// 也可以使用pattern
     	}
-
+  
     }
     }; // end struct
-
+  
     } //namespace
-
+  
     // std::unique_ptr mlir::xxxx::createPassNamePass(option-input-type optionName)
     std::unique_ptr mlir::xxxx::createPassNamePass(){
     	// return std::make_unique<PassNamePass>(optionName);
@@ -2255,7 +2470,7 @@ mlir/include/mlir/Dialect/PDL/IR/PDLTypes
 
     ```cpp
     // RUN: mlir-opt -allow-unregistered-dialect %s -pass-pipeline='builtin.module(func.func(passname))' | FileCheck %s
-
+  
     func.func @example() -> () {
     	...
       return ...
@@ -2398,6 +2613,30 @@ region包含若干个block，一般linalgOp都包含一个region
 - bool hasOneBlock() 常用来判断region内只有一个block，取Block的时候用 `a.front()`
 - getUsedValuesDefinedAbove(MutableArrayRef<Region> regions, SetVector<Value> &values)
 收集在regions中使用，但不在region中的blockArg上定义的Value，将其放入values
+- getOps() : `for (Operation &op : region.getOps())`
+
+```cpp
+for (Region *region : regions()) {
+    std::queue<Operation *>worklist; // 如果不在乎遍历顺序，或者可以按压入顺序来逆序遍历
+    for (Operation &op : region.getOps()) {
+        worklist.push(&op);
+    }
+    while (!worklist.empty()) {
+        Operation *op = worklist.front();
+        worklist.pop();
+        if (op->getParentRegion() != region)
+            // 防止某些op提前被修改
+            continue;
+    }
+    ...
+}
+```
+
+- takeBody: 把另外一个region的block占为己有(相当于把另外一个region的block的所有权给拿走了)
+
+`newforallOp.getRegion().takeBody(forallOp.getRegion());`
+
+
 
 ---
 
@@ -2480,6 +2719,23 @@ bool mlir::isOpTriviallyDead(Operation *op) {
 ```cpp
 std::optional<llvm::SmallVector<MemoryEffects::EffectInstance>>
 mlir::getEffectsRecursively(Operation *rootOp)
+```
+
+- bool isSpeculatable(Operation* op)
+
+判断一个op是否是用于判断相关的语意，会先尝试判断op是否有 `ConditionallySpeculatable`的OpInterface
+
+然后会根据 `conditionallySpeculatable.getSpeculatability()` 来判断
+
+```cpp
+switch(conditionallySpeculatable.getSpeculatability()) {
+  case Speculation::RecursivelySpeculatable:
+    // 遍历op->getRegions()中的所有op，判断
+  case Speculation::Speculatable:
+    return true;
+  case Speculation::NotSpeculatable:
+    return false;
+}
 ```
 
 
@@ -2642,7 +2898,62 @@ def LLVM_ConstantOp
 
 ## transform dialect
 
-linalg transformOp
+### transform Interface
+
+```cpp
+mlir/include/mlir/Dialect/Transform/Interfaces/TransformInterfaces.h
+```
+
+transform op在应用时，一般调用 apply方法，该方法需要传入三个元素
+
+```cpp
+DiagnosedSilenceableFailure
+transform::FuseIntoContainingOp::apply(transform::TransformRewriter &rewriter,
+                                       transform::TransformResults &results,
+                                       transform::TransformState &state) {
+```
+
+- `transform::TransformRewriter`
+
+```cpp
+class TransformRewriter : public RewriterBase {
+protected:
+  friend class TransformState;
+public:
+  // notify给定的op已经被另一个op替换了,应该修改handle和payload(ops/val)之间的map
+  LogicalResult notifyPayloadOperationReplaced(Operation *op,
+                                               Operation *replacement);
+```
+
+- `transform::TransformResults`
+
+```cpp
+class TransformResults {
+  friend class TransformState;
+public:
+  // 各种set方法
+```
+
+- `transform::TransformState`
+
+    - Operation *getTopLevel :  topLevel包含all payload IR，一般来说是一个moduleOp。当transform ir应用在全局使用
+
+    - getPayloadOps : 返回给定value的对应payloadOps。当transform ir应用在特定的handle使用
+      - 定义
+      ```cpp
+      auto getPayloadOps(Value value) const {
+          ArrayRef<Operation *> view = getPayloadOpsView(value);
+      ```
+      - 使用
+      ```cpp
+      auto targetOps = state.getPayloadOps(getTarget())
+      auto producerOps = state.getPayloadOps(getProducerOp());
+      auto containingOps = state.getPayloadOps(getContainingOp());
+      ```
+
+    - `ArrayRef<Attribute> getParams(Value value)` : 返回传入transform ir的参数(都是以Attribute的形式传入的)
+
+### linalg transformOp
 
 ```c++
 mlir/lib/Dialect/Linalg/TransformOps/LinalgTransformOps.cpp
@@ -2650,21 +2961,27 @@ mlir/lib/Dialect/Linalg/TransformOps/LinalgTransformOps.cpp
 
 常见op（详细请学习[https://mlir.llvm.org/docs/Dialects/Transform/](https://mlir.llvm.org/docs/Dialects/Transform/)）
 
-1.transform.structured.match
+- transform.structured.match
+- 
 其他transform ir使用前一般都要先match
 ir中可能包含多个同名op，所以opIndexing来锁定handle
 
-2.transform.structured.tile_reduction_using_for
+- transform.structured.tile_reduction_using_for
+
 对reduction轴的tile
 
 继承了 `TilingInterface` 的op都可以进行tile，每个可以tile的维度属于parallel或reduction
-3.transform.structured.tile_reduction_using_forall
 
-4.transform.structured.tile_using_forall
 
-…
+- transform.structured.tile_reduction_using_forall
+
+- transform.structured.tile_using_forall
 
 个人理解：forall region内的计算可以并行，for region内的计算不能并行
+
+- transform.structured.fuse_into_containg
+
+要求producer op一定是 `linalg::::GenericOp` ，常见的linalgOp都可以表示为linalg.generic
 
 ---
 
@@ -2770,7 +3087,7 @@ use.getOwner() —> Operation*
 
 ---
 
-## code style
+## clang code style
 
 mlir的代码一般都得准守clang的format，简单的话可以使用 `git-clang-format` 工具
 
@@ -2807,18 +3124,89 @@ mlir的代码一般都得准守clang的format，简单的话可以使用 `git-cl
 
 
 
-
-
 ---
 
-## 其他好用的方法
+## code tips
 
-### 编程tip
+### coding优化
 
-- 如果需要在循环中查找，建议使用 `DenseSet`, `DenseMap` 类数据结构， `contains`, `find`, `count`等操作开销都小
-- 函数使用引用传递，不要返回类型，会增加拷贝开销
+#### 重开销类型返回 -> 引用传递
 
-### 重排序  `applyPermutationToVector`
+如果需要从函数中获得一个重开销数据结构的对象，那么函数使用引用传递，不要返回类型，会增加拷贝开销
+
+```cpp
+SmallVector<Operation *> func(xxx);
+
+- >
+    
+void func(xxx, SmallVector<Operation *> &res);
+```
+
+Operation* / Value 这类都是比较重开销的数据结构，但如果是 S mallVector<int64_t> 就没必要引用传递，直接使用返回目标类型
+
+#### 不会被修改的SmallVector -> ArrayRef
+
+- 传递一个不会被修改的SmallVector对象可以使用ArrayRef作为形参数
+
+```cpp
+void func(const SmallVector<Operation *> &input);
+
+->
+
+void func(ArrayRef<Operation> input);
+```
+
+#### 循环变量类型
+
+`for` 循环中的循环变量类型使用 `size_t`，其常用来表示 **一个数组的下标或对象的大小**。在下面的代码中如果循环变量 `i`的类型使用 `int64_t`则会出现warning。
+
+```cpp
+for (size_t i = 0; i < a.size(); ++i)
+```
+- 如果有需要使用 `i` 和 `int64_t`类型比较的时，就用 `static_cast<int64_t>(i)`
+- 也可以一开始就将循环变量定义为 `int64_t` （推荐）
+```cpp
+for (int64_t i = 0; i < static_cast<int64_t>(a.size()); ++i)
+```
+
+#### 循环中的vec查找行为 -> set 
+
+如果需要在循环中查找，建议使用 `DenseSet`, `DenseMap` 类数据结构， `contains`, `find`, `count`等操作开销都小（也可以llvm::sort后查找）
+
+```cpp
+for(int64_t i = 0; i < static_cast<int_64>(a.size()); ++i) {
+    if (llvm::find(visitedIndexesVec, i) != visitedIndexesVec.end()) {
+        ...
+
+// 使用DenseSet 数据结构
+for(int64_t i = 0; i < static_cast<int_64>(a.size()); ++i) {
+    if (visitedIndexesSet.contains(i)) {
+        ...
+            
+// sort后顺序访问
+llvm::sort(visitedIndexesVec);
+for(int64_t i = 0, index = 0; i < static_cast<int_64>(a.size()); ++i) {
+    if (index < static_cast<int64_t>(visitIndexesVec.size()) &&
+        visitedIndexesVec(index) == i) {
+        index++;
+    }
+```
+
+#### 常用reverse来为SmallVector预分配size
+
+防止每次压入后动态扩张size带来的开销
+
+如果预先不确定需要用多大，也可以先分配4
+
+```cpp
+SmallVector<Operation *, 4>
+```
+
+
+
+### 常用code
+
+#### 重排序  `applyPermutationToVector`
 
 ```cpp
 #include "mlir/Dialect/Utils/IndexingUtils.h"
@@ -2828,7 +3216,7 @@ SmallVector<int64_t> newShapes(srcShape.begin(), srcShape.end());
 applyPermutationToVector(newShapes, permutation); // permutation是shape的新序列
 ```
 
-### lambda函数编程习惯
+#### lambda函数编程习惯
 
 ```cpp
 // [] : 捕获列表，可以是值捕获、引用捕获或者不捕获任何变量
@@ -2860,7 +3248,7 @@ llvm::find_if(shapeIndexs, [&](int64_t shapeIndex) {
 });
 ```
 
-### 创建一个包含dynamic shape的tensor.empty
+#### 创建一个包含dynamic shape的tensor.empty
 
 ```cpp
       SmallVector<OpFoldResult> newShapes;
@@ -2875,7 +3263,7 @@ llvm::find_if(shapeIndexs, [&](int64_t shapeIndex) {
 			rewriter.create<tensor::EmptyOp>(loc, newShapes, srcType.getElementType());
 ```
 
-### 两维计算展开高维为循环
+#### 两维计算展开高维为循环
 compute(memref<axbxf32>) -> for a { compute(memref<1xbxf32>) }
 
 获得memref的offset 、size、stide的方法间 [offset-size-stride](#offset--stride--size) 节
@@ -2915,7 +3303,7 @@ auto newOp = clone(rewriter, op, TypeRange{newResType}, newOperands);
 rewriter.replaceOp(op, newOp->getResults());
 ```
 
-### 判断输入是否为升序
+#### 判断输入是否为升序
 
 ```cpp
     auto isIncremental = [](llvm::ArrayRef<int64_t> array) {
@@ -2929,7 +3317,7 @@ rewriter.replaceOp(op, newOp->getResults());
     };
 ```
 
-### 输出SmallVector<int64_t> a的元素相对大小次序
+#### 输出SmallVector<int64_t> a的元素相对大小次序
 
 输入一个SmallVector<int64_t> a，要求输出一个SmallVector<int64_t> res，res记录了a中元素的相对大小顺序
 
@@ -2950,7 +3338,9 @@ rewriter.replaceOp(op, newOp->getResults());
       };
 ```
 
-### 收集一起launch的op
+#### 定义一个driver来递归地处理func中符合条件的op
+
+例：收集一起launch(或其他special)的op
 
 ```cpp
 namespace {
@@ -3019,14 +3409,14 @@ void WrapDriver::processOnOp(Operation* op) {
 }
 
 void WrapDriver::processOnFunc(func::FuncOp funcOp) {
-  llvm::SmallVector<Operation*> workList;
+  llvm::SmallVector<Operation*> worklist;
   funcOp->walk([&](Operation* workOp){
     if (checkOpIfNeedLaunch(workOp)) {
-     workList.push_back(workOp);
+     worklist.push_back(workOp);
     }
   });
 
-  for (auto *candidateOp : workList) {
+  for (auto *candidateOp : worklist) {
     if (visited.contains(candidateOp))
       continue;
     opsToWrapTogather.clear();

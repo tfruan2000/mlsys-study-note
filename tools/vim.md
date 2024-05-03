@@ -57,5 +57,43 @@ set incsearch "边输入边搜索(实时搜索)"
     - `g` 表示全局替换
 
 - 在vim中比较两个文件的不同
-    - `vimdiff a.file b.file`
+    - `vimdiff a.file b.file` 或者在一个文件中 `:vs b.file`
     - 使用 `crtl + w` + `w` 进行切换左右侧
+
+## nvim
+
+nvim比vim感觉更好看点，而且好用些
+
+安装neovim
+
+- Mac
+
+```bash
+brew install neovim
+```
+
+- linux
+
+```bash
+curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim.appimage
+chmod u+x nvim.appimage
+./nvim.appimage
+
+mv ./nvim.appimage ~/.local/bin/nvim
+```
+
+再创建配置文件，并和 `~/.vimrc` 一样配置
+
+```bash
+mkdir ~/.config/nvim
+touch ~/.config/nvim/init.vim
+
+cp ~/.vimrc ~/.config/nvim/init.vim
+```
+
+然后修改 `~/.zshrc` 或 `./bashrc`
+
+```bash
+alias vim="nvim"
+alias vi="nvim"
+```
