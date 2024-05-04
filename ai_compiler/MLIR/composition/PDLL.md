@@ -2,21 +2,29 @@
 
 用pdll来实现pattern的match和rewrite
 
+
+
 ```cpp
 // PatternRuleImpl.cpp
 // 定义这些rewrite和constrain实现
-void mlir::genesis::auto_genesis::registerRuleFunctions(
-    RewritePatternSet &patterns) {
-  auto &patternModule = patterns.getPDLPatterns();
+static Operation *buildOpImpl(PDLResultList &results, Value value) {
+  // insert special rewrite logic here.
+  Operation *resultOp = ...; 
+  return resultOp;
+}
 
+void registerRuleFunctions(RewritePatternSet &patterns) {
+  // patterns.getPDLPatterns().registerRewriteFunction("BuildOp", buildOpImpl);
+  // 或者采用下面的形式
+  auto &patternModule = patterns.getPDLPatterns();
+    
 #define RegRewrite(name)                                                       \
   patternModule.registerRewriteFunction(#name, name##Impl)
 
 #define RegConstraints(name)                                                   \
   patternModule.registerConstraintFunction(#name, name##Impl)
 
-  RegRewrite(tile);
-  
+  RegRewrite(tileOp);
   RegConstraints(tilingLoopSizeLimit);
 }
 ```
@@ -38,13 +46,13 @@ inline Value getAnchorHandle(PatternRewriter &rewriter, Value &funcHandle,
       /*interface=*/nullptr,
       /*op_attrs=*/
       DictionaryAttr::get(context,
-                          rewriter.getNamedAttr(opIndexingIdName,
-                                                op->getAttr(opIndexingIdName))),
+                          rewriter.getNamedAttr(attrName,
+                                                op->getAttr(attrName))),
       /*filter_result_type=*/nullptr);
 }
 
-// 找到对funcOp的matchO
-inline transform::MatchOp sniffFuncMatchOp(Operation *targetOp) {
+// 找到对funcOp的matchOp
+inline transform::MatchOp matchFuncOp(Operation *targetOp) {
   // Get the parent module op of targetOp.
   transform_ext::MatchOp retOp{};
   if (auto module = targetOp->getParentOfType<ModuleOp>()) {
@@ -52,7 +60,7 @@ inline transform::MatchOp sniffFuncMatchOp(Operation *targetOp) {
     if (seqOp) {
       auto &block = seqOp.getRegion().front();
       for (auto iter = block.rbegin(); iter != block.rend(); ++iter) {
-        if (auto matchOp = dyn_cast_or_null<transform::MatchOp>(*iter)) {
+        if (auto matchOp = dyn_cast_if_present<transform::MatchOp>(*iter)) {
           retOp = matchOp;
           break;
         }
@@ -62,10 +70,10 @@ inline transform::MatchOp sniffFuncMatchOp(Operation *targetOp) {
   return retOp;
 }
 
-inline Value getFuncMatchHandleAndSetRewriter(PatternRewriter &rewriter,
+inline Value getFuncHandleAndSetRewriter(PatternRewriter &rewriter,
                                               Operation *targetOp) {
   Value ret(nullptr);
-  auto matchOp = sniffFuncMatchOp(targetOp);
+  auto matchOp = matchFuncOp(targetOp);
   if (matchOp) {
     ret = matchOp.getResult();
     rewriter.setInsertionPointAfter(matchOp);
@@ -82,24 +90,20 @@ inline Value getFuncMatchHandleAndSetRewriter(PatternRewriter &rewriter,
 // rewrite methods
 //===----------------------------------------------------------------------===//
 
-static void tileImpl(PatternRewriter &rewriter, Operation *op,
-                     ArrayAttr numThreads, ArrayAttr tileSize,
-                     ArrayAttr threadDimMapping) {
-  DBGS() << "Enter rewrite rule [tile], with target op: ";
+static void tileOpImpl(PatternRewriter &rewriter, Operation *op,
+                       ArrayAttr tileSize) {
+  DBGS() << "Enter rewrite rule [tileOp], with target op: ";
   LLVM_DEBUG(op->print(DBGS()));
-  Value funcHandle = getFuncMatchHandleAndSetRewriter(rewriter, op); // 先找到对func matchop
+  Value funcHandle = getFuncHandleAndSetRewriter(rewriter, op); // 先找到对func matchop
   MLIRContext *context = op->getContext();
   auto pdlOpType = pdl::OperationType::get(context);
   Value anchor = getAnchorHandle(rewriter, funcHandle, op); // 生成对target的match op
-  numThreads = numThreads.empty() ? nullptr : numThreads;
   tileSize = tileSize.empty() ? nullptr : tileSize;
   rewriter.create<transform::TileToForallOp>(
       rewriter.getUnknownLoc(),
       /*resultTypes=*/TypeRange({pdlOpType, pdlOpType}),
       /*target=*/anchor,
-      /*num_threads=*/numThreads,
-      /*tile_sizes=*/tileSize,
-      /*mapping=*/ArrayAttr::get(context, threadDimMapping));
+      /*tile_sizes=*/tileSize,);
 }
 
 ```
@@ -114,15 +118,15 @@ static LogicalResult tilingLoopSizeLimitImpl(PatternRewriter &rewriter,
                                              Attribute highNumAttr) {
   DBGS() << "Enter constraint check: [tilingLoopSizeLimitImpl]\n";
 	LLVM_DEBUG(op->print(DBGS()))
-  auto loopPosIntAttr = loopPosAttr.dyn_cast_or_null<IntegerAttr>();
-  auto lowNumIntAttr = lowNumAttr.dyn_cast_or_null<IntegerAttr>();
-  auto highNumIntAttr = highNumAttr.dyn_cast_or_null<IntegerAttr>();
+  auto loopPosIntAttr = loopPosAttr.dyn_cast_if_present<IntegerAttr>();
+  auto lowNumIntAttr = lowNumAttr.dyn_cast_if_present<IntegerAttr>();
+  auto highNumIntAttr = highNumAttr.dyn_cast_if_present<IntegerAttr>();
   if (!loopPosIntAttr || !lowNumIntAttr || !highNumIntAttr)
     return failure();
   auto loopPos = loopPosIntAttr.getInt();
   auto lowNum = lowNumIntAttr.getInt();
   auto highNum = highNumIntAttr.getInt();
-  if (auto tilingInterface = llvm::dyn_cast_or_null<TilingInterface>(root)) {
+  if (auto tilingInterface = llvm::dyn_cast_if_present<TilingInterface>(root)) {
     auto ranges = tilingInterface.getIterationDomain(rewriter);
     if (loopPos > ranges.size())
       return failure();
@@ -140,55 +144,35 @@ static LogicalResult tilingLoopSizeLimitImpl(PatternRewriter &rewriter,
 ## pdll文件定义pattern
 
 ```cpp
-// ==== RewriteRules ======================
-// @param[in] op 目标算子.
-// @param[in] numOfThread 拆分的份数.
-// @param[in] tileSize 拆分后的大小.
-// @param[in] threadDimMapping 映射到哪些轴上.
-Rewrite tile(op: Op, numOfThread: Attr, tileSize: Attr, threadDimMapping: Attr);
+// ==== Rewrite Rule ======================
+Rewrite tileOp(op: Op, tileSize: Attr);
 
-Rewrite tileTwiceAndRelay(op:Op, operandsToRelay:Attr,
-                          numThreadsForFirst:Attr, tileSizeForFirst:Attr, threadDimMappingForFirst:Attr,
-                          numThreadsForSecond:Attr, tileSizeForSecond:Attr, threadDimMappingForSecond:Attr);
-
-// ==== Constraints ======================
-// 判断某一个维度上的大小是否在一定的范围
-// @param[in] op 目标算子.
-// @param[in] loopPosAttr 维度的index.
-// @param[in] lowNumAttr 范围下限
-// @param[in] highNumAttr 范围上限
+// ==== Constraint Rule ======================
 Constraint tilingLoopSizeLimit(op:Op, loopPosAttr:Attr, lowNumAttr:Attr, highNumAttr:Attr);
 
+// Constraint + Rewrite -> Patterns
 // ==== Patterns ======================
 Pattern TileParallelofConvOpUseRange with benefit(9) {
-  let root = op<linalg.conv_2d_nhwc_fhwc>;
-  canTileParallel(root);
-  tilingLoopSizeLimit(root, attr<"0">, attr<"1">, attr<"1">);
-  tilingLoopSizeLimit(root, attr<"1">, attr<"513">, attr<"2000">);
-  tilingLoopSizeLimit(root, attr<"2">, attr<"1">, attr<"1">);
-  tilingLoopSizeLimit(root, attr<"3">, attr<"100">, attr<"512">);
-  tilingLoopSizeLimit(root, attr<"4">, attr<"1">, attr<"1">);
-  tilingLoopSizeLimit(root, attr<"5">, attr<"1">, attr<"1">);
+  let root = op<linalg.conv_2d_nhwc_fhwc>; // payloadOp
+  canTileParallel(root); // Constraint1
+  tilingLoopSizeLimit(root, attr<"1">, attr<"513">, attr<"2000">); // Constraint2
   rewrite root with {
-    // tile(root, attr<"[1, 6, 1, 4, 1, 1, 1]">, attr<"[]">, attr<"[8, 8, 8, 8, 8, 8, 8]">);
-    tileTwiceAndRelay(root, attr<"[0]">, 
-                      attr<"[1, 5, 1, 4, 1, 1, 1]">, attr<"[]">, attr<"[8, 8, 8, 8, 8, 8, 8]">,
-                      attr<"[1, 1, 1, 4, 1, 1, 1]">, attr<"[]">, attr<"[1, 1, 1, 1, 1, 1, 1]">);
+    tileOp(root, attr<"[1, 6, 1, 4, 1, 1, 1]">);
   };
 }
-
 ```
 
 ## pass中parse pdll并解析
 
 ```cpp
+// 输入为.pdll文件的路径
+// 参考：mlir/lib/Tools/mlir-pdll-lsp-server/PDLLServer.cpp
 static inline OwningOpRef<ModuleOp>
-parsePdllSourceFile(llvm::StringRef patternSource, MLIRContext *context) {
+parsePdllSourceFile(llvm::StringRef pdllSource, MLIRContext *context) {
   std::string errorMessage;
-  auto memoryBuffer = mlir::openInputFile(patternSource, &errorMessage);
+  auto memoryBuffer = mlir::openInputFile(pdllSource, &errorMessage);
   if (!memoryBuffer)
     return OwningOpRef<ModuleOp>();
-  // Collect the content from pdll source file.
   llvm::SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(memoryBuffer), llvm::SMLoc());
   ods::Context odsContext;
