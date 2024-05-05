@@ -533,7 +533,7 @@ bufferization：将逻辑计算语义的tensor转为物理内存语义的buffer
 
 （这部分来自大佬同事的笔记）
 
-```c++
+```cpp
 mlir/lib/Dialect/Bufferization/IR/BufferizableOpInterface.cpp
 ```
 
@@ -1782,7 +1782,7 @@ size_t mlir::moveLoopInvariantCode(LoopLikeOpInterface loopLike) {
     - `SmallVector<int64_t, 2>` 表示包含 `int64_t` 元素的 `SmallVector` 类型，其中 `2` 是指定的初始大小
     - **tips:如果能预先知道需要的size，就使用reserve先分配**
     - 其他
-        ```c++
+        ```cpp
         llvm::reverse()
         llvm::to_vector()
         // SmallVector<int64_t> res{llvm::to_vector(llvm::seq((int64_t)0, size))};
@@ -1795,8 +1795,14 @@ size_t mlir::moveLoopInvariantCode(LoopLikeOpInterface loopLike) {
     - 写一个以SmallVector为参数的函数，如果传入的元素个数是固定的，建议使用`SmallVectorImpl` 作为形参，来避免**对堆栈元素的隐式数量进行硬编码**
 
 - llvm::SetVector
-
     - 即有set的存储行为，又有vector的存储顺序
+    - 常用方法
+        - insert
+        - contains / count
+        - erase
+        - clear
+        - size
+        - empty
 
 - llvm:to_vector
     - 将数组类型的对象转为SmallVector，常用来解决用ArrayRef构造SmallVector
@@ -1973,10 +1979,35 @@ tip: 如果需要在循环中查找，建议使用 `DenseSet`, `DenseMap` 类数
 
 #### STL_Extra func
 
+- llvm::count_if
+    - 用法
+      ```cpp
+      llvm::count_if(inputs.getType(), [](Type type) {
+        return type.isa<ShapedType>();
+      });
+
+      int64_t = numUsesInContainingOp = llvm::count_if(producerOp->getUsers(), [&](Operation *op) {
+        return containingOp->isAncestor(op);
+      });
+      ```
+    - 实现
+      ```cpp
+      template <typename R, typename UnaryPredicate>
+      auto count_if(R &&Range, UnaryPredicate P) {
+        return std::count_if(adl_begin(Range), adl_end(Range), P);
+      }
+      ```
+
+- llvm::transform
+    - 使用
+      ```cpp
+      llvm::transform(srcDims, std::back_inserter(resDims)
+      [&](int64_t dim) { return dim * 2; });
+      ```
+
 - llvm::hasSingleElement
 
     - 使用
-
         ```cpp
           auto containingOps = state.getPayloadOps(getContainingOp());
           if (!llvm::hasSingleElement(containingOps)) {
@@ -1988,7 +2019,6 @@ tip: 如果需要在循环中查找，建议使用 `DenseSet`, `DenseMap` 类数
         ```
 
     - 实现
-
         ```cpp
         template <typename ContainerTy>
         bool hasSingleElement(ContainerTy &&C) {
@@ -2154,7 +2184,7 @@ mlir::scf::lowerToLoopsUsingSCFForOp(RewriterBase &rewriter,
 
 ## Operand
 
-```c++
+```cpp
 mlir/include/mlir/IR/Operation.h
 ```
 
@@ -2263,7 +2293,7 @@ def MapOp : LinalgStructuredBase_Op<"map", [
     on the corresponding elements.
 
     Example:
-```
+    ```
       %add = linalg.map
           ins(%lhs, %rhs : tensor<64xf32>, tensor<64xf32>)
           outs(%init: tensor<64xf32>)
@@ -2291,6 +2321,7 @@ def MapOp : LinalgStructuredBase_Op<"map", [
     // Output arg
     TensorOrMemref:$init
   );
+  // 把result只限制在tensor语意上，memref时候就没有result
   let results = (outs Variadic<AnyTensor>:$result);
   let regions = (region SizedRegion<1>:$mapper);
 
@@ -2343,6 +2374,7 @@ void MapOp::build(
   result.addAttributes(attributes);
 
   // Add output types for `RankedTensorType` output arguments.
+  // 配合 td 中 `let results = (outs Variadic<AnyTensor>:$result);`
   Type initType = init.getType();
   if (llvm::isa<RankedTensorType>(initType))
     result.addTypes(initType);
@@ -2486,7 +2518,7 @@ Pattern TileParallelofConvOpUseRange with benefit(9) {
   xxxx/xxx/Transforms/PassName.cpp
 
     ```cpp
-    //===- passNamePass.cpp -----------------------------------------*- C++ -*-===//
+    //===- passNamePass.cpp -----------------------------------------*- cpp -*-===//
     //
     // description
     //
@@ -2712,7 +2744,7 @@ for (Region *region : regions()) {
 
 ## SideEffect
 
-```c++
+```cpp
 mlir/include/mlir/Interfaces/SideEffectInterfaces.h
 mlir/lib/Interfaces/SideEffectInterfaces.cpp
 ```
@@ -2826,7 +2858,7 @@ def AddOp : ToyOp<"add", [Pure]> {
 
 def ReturnOp : ToyOp<"return", [Terminator, ReturnLike]> {
   let summary = "return operation"
-	// Optional描述可选参数，在对应的c++中也用optional声明该变量
+	// Optional描述可选参数，在对应的cpp中也用optional声明该变量
   let arguments = (ins Optional<AnyInteger>:$data);
 }
 
@@ -3046,7 +3078,7 @@ public:
 
 ### linalg transformOp
 
-```c++
+```cpp
 mlir/lib/Dialect/Linalg/TransformOps/LinalgTransformOps.cpp
 ```
 
@@ -3120,7 +3152,7 @@ Value 必然包含 Type，Type 也可以作为 Attribute 附加在 Operation 上
 
 ## tiling
 
-```c++
+```cpp
 mlir/lib/Dialect/Linalg/Transforms/Tiling.cpp
 ```
 
@@ -3255,9 +3287,13 @@ for (size_t i = 0; i < a.size(); ++i)
 ```
 - 如果有需要使用 `i` 和 `int64_t`类型比较的时，就用 `static_cast<int64_t>(i)`
 - 也可以一开始就将循环变量定义为 `int64_t` （推荐）
+
 ```cpp
 for (int64_t i = 0; i < static_cast<int64_t>(a.size()); ++i)
 ```
+
+- 迭代变量i推荐使用 `++i`
+> `i++` 可能会产生一个临时变量来保留前值，而 `++i` 并不会有这样的开销。虽然现代编译器一般能消除此类影响。
 
 #### 循环中的vec查找行为 -> set
 

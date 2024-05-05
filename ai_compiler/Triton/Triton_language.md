@@ -89,7 +89,7 @@ advance
 
 ### tl.load & tl.store
 
-load(*pointer*, *mask=None*, *other=None*, *boundary_check=()*, *padding_option=''*, *cache_modifier=''*, *eviction_policy=''*, *volatile=False*). 
+load(*pointer*, *mask=None*, *other=None*, *boundary_check=()*, *padding_option=''*, *cache_modifier=''*, *eviction_policy=''*, *volatile=False*).
 
 主要是前三个参数：
 
