@@ -35,16 +35,38 @@ cmake --build . --target check-mlir
 在BUILD文件配置一下下面的内容，再bazel run 一下就可以编译出compile_commands.json
 详情自学：[https://github.com/hedronvision/bazel-compile-commands-extractor/tree/main](https://github.com/hedronvision/bazel-compile-commands-extractor/tree/main)
 
-```cpp
+1. 修改WORKSPACE，添加
+```bash
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "hedron_compile_commands",
+
+    # 建议把下面两处 commit hash 换成 github 上最新的版本
+    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/ed994039a951b736091776d677f324b3903ef939.tar.gz",
+    strip_prefix = "bazel-compile-commands-extractor-ed994039a951b736091776d677f324b3903ef939",
+)
+
+load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+hedron_compile_commands_setup()
+
+```
+
+2.在根目录下的 `BUILD.bazel` 中添加下面语句
+
+```bash
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
 refresh_compile_commands(
     name = "refresh_compile_commands",
+    # 指定目标 target 及其编译选项/参数（.bazelrc 中已有的参数/选项无需重复添加）
     targets = {
       "//:my_output_1": "--important_flag1 --important_flag2=true"
     },
 )
 ```
+
+3.运行 `bazel run :refresh_compile_commands`
 
 - 配置vscode的clangd插件
 
@@ -996,6 +1018,7 @@ mlir/lib/Dialect/SCF/IR/SCF.cpp
 
 	经常在 `bufferize` 后的 `canonicalize` 起效，因为`bufferize` 后 `scf.yield` 的operand更关系更明确了
 
+
 	```llvm
 	// ./build/bin/mlir-opt test_if.mlir --split-input-file --one-shot-bufferize --canonicalize
 
@@ -1661,7 +1684,8 @@ loopLike.getTiedLoopInit(iterArg)->get() : %arg0
 
 ### isa
 isa : 不能在cast之后使用isa，有类似场景请用dyn_cast
-isa_and_nonnull ：允许op为null作为输入，返回null
+isa_and_nonnull / isa_and_present：允许op为null作为输入，返回null
+> 两者作用完全相同，未来的llvm将弃用 `isa_and_nonnull` ，推荐使用 `isa_and_present`
 
 ### cast
 - cast ：直接转换，失败时报错
