@@ -2001,7 +2001,7 @@ tip: 如果需要在循环中查找，建议使用 `DenseSet`, `DenseMap` 类数
       ```
 
 
-#### STL_Extra func
+### STL_Extra func
 
 - llvm::count_if
     - 用法
@@ -2062,8 +2062,13 @@ tip: 如果需要在循环中查找，建议使用 `DenseSet`, `DenseMap` 类数
 	}
 	```
 
-
-
+### setOperation
+```cpp
+llvm/include/llvm/ADT/SetOperations.h
+```
+- llvm::set_union(A, B): 计算集合A与集合B的并集，并将结果赋值给集合A
+- llvm::set_intersection(A, B): 计算集合A与集合B的交集，并将结果赋值给集合A
+- llvm::set_subtract(A, B): 计算集合A与集合B的差集（在A中但不在B中），并将结果赋值给集合A
 
 
 ---
@@ -2274,10 +2279,11 @@ mlir/lib/IR/Operation.cpp
         ```
 
 - getParentRegion 返回包含该op的region，也可以返回nullptr
-- getBlock 返回父block，而不是当前op的block
-- getBody 返回当前op内部的block或region
+- getBlock() 返回父block，而不是当前op的block
+- getBody() 返回当前op内部的block或region
 - getOperands()
     - 如果operand没有defineOp，则代表是BlockArguement
+- bool isBeforeInBlock(Operation *other) 判断这个op是否在other之前，要求当前op和other都在同一block内
 - getResults() / getResult(unsigned idx)
 - 转换为目标op
     - cast<AddOp>(op)
@@ -2572,7 +2578,8 @@ Pattern TileParallelofConvOpUseRange with benefit(9) {
     	explicit PassNamePass() = default;
 
     	void runOnOperation() override {
-    		// 根据td中的作用域来返回，如果pass的td定义的作用域是mlir::ModuleOp,则这里返回moduleOp
+    		// 根据td中的作用域来返回，如果pass的td定义的作用域是mlir::ModuleOp,则这里返回moduleOp。
+        // 如果pass.td中没有设置，则返回输入ir的top-level op
     		auto targetOp = getOperation();
     		MLIRContext *ctx = funcOp->getContext();
     		...
@@ -3496,7 +3503,7 @@ rewriter.replaceOp(op, newOp->getResults());
 namespace {
 class WrapDriver {
 public:
-  void processOnFunc(func::FuncOp funcOp);
+  void processor(Operation *op);
 private:
   /// The map between candidateOp and its result indexes that returned from
   /// scf.forall.
@@ -3520,8 +3527,24 @@ private:
 
 } // namespace
 
+//===----------------------------------------------------------------------===//
+// Check if the op is a candidate.
+//===----------------------------------------------------------------------===//
+
+bool WrapDriver::checkOpIfNeedLaunch(Operation* op) {
+  // Check if the op is a candidate to be wrapped.
+  // ...
+}
+
+//===----------------------------------------------------------------------===//
+// Process on the candidate op.
+//===----------------------------------------------------------------------===//
+
 /// Use opsToWrapTogather and replacementCount to create a loop to wrap ops.
 void WrapDriver::createWrapToLaunch() {
+  // 创建scf.forall后需要将opsToWrapTogather中的op都move进循环region
+  // 但是存在特殊情况，如果一个op的operand的defineOp在scf.forall之后，那么这个op就不能被move
+  // 则需遍历candidate的输入operand，如果operand的defineOp不存在 或 存在且在scf.forall之前，则该op的move行为合法。反之（存在且在之后）将后续op的visited都清除。可以有一个index变量
   // ...
 }
 
@@ -3558,7 +3581,11 @@ void WrapDriver::processOnOp(Operation* op) {
   replacementNum += replacementIndexes.size();
 }
 
-void WrapDriver::processOnFunc(func::FuncOp funcOp) {
+//===----------------------------------------------------------------------===//
+// Collect the candidate op from input.
+//===----------------------------------------------------------------------===//
+
+void WrapDriver::processor(func::FuncOp funcOp) {
   llvm::SmallVector<Operation*> worklist;
   funcOp->walk([&](Operation* workOp){
     if (checkOpIfNeedLaunch(workOp)) {
@@ -3578,10 +3605,10 @@ void WrapDriver::processOnFunc(func::FuncOp funcOp) {
 
 
 namespace {
-void main(func::FuncOp funcOp) {
-  WrapDriver driver;
-  driver.processOnFunc(funcOp);
-}
+	void runOnOperation() override {
+		WrapDriver driver;
+    driver.processor(getOperation());
+	}
 } // namespace
 ```
 
