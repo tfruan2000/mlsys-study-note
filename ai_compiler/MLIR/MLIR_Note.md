@@ -498,11 +498,21 @@ void mlir::populateAffineToStdConversionPatterns(RewritePatternSet &patterns) {
     - replaceUsesWithIf(Value from, Value to, func_ref) / replaceUsesWithIf(ValueRange from, Value to, func_ref) / replaceUsesWithIf(Operation \*op, Value to, func_ref)
         ```cpp
         // 替换forallOp外的使用
-        rewriter.replaceAllUsesWithIf(workOp, forallOp->getResults(idx)
+        rewriter.replaceAllUsesWithIf(workOp->getResult(0), forallOp->getResults(idx)
         	[&](OpOperand use) {return !forallOp->isProperAncestor(use.getOwner())});
+
+        // 仅替换当前op的使用
+        rewriter.replaceUsesWithIf(emptyOp->getResult(), newEmptyOp->getResult(),
+            [&](OpOperand use) { return use.getOwner() == op; });
         ```
 
     - replaceAllUsesExcept(Value from, Value to, Operation *exceptedUser)
+      - 本质是使用 `replaceUsesWithIf` 来实现
+        ```cpp
+        rewriter.replaceUsesWithIf(from, to,
+            [&](OpOperand use) { return use.getOwner() != exceptedUser; });
+        ```
+
 - 消除
     - earseOp(Operation *op) : 如果要在pattern中删除op，最好使用 `rewriter.earseOp`，使用op自带的 `erase` 函数代码运行时会在debug模式出问题
     - earseBlock(Block *block)
@@ -3520,7 +3530,7 @@ private:
 
   bool checkOpIfNeedLaunch(Operation* op);
 
-  void processOnOp(Operation* op);
+  LogicalResult processOnOp(Operation* op);
 
   void createWrapToLaunch();
 };
@@ -3542,9 +3552,6 @@ bool WrapDriver::checkOpIfNeedLaunch(Operation* op) {
 
 /// Use opsToWrapTogather and replacementCount to create a loop to wrap ops.
 void WrapDriver::createWrapToLaunch() {
-  // 创建scf.forall后需要将opsToWrapTogather中的op都move进循环region
-  // 但是存在特殊情况，如果一个op的operand的defineOp在scf.forall之后，那么这个op就不能被move
-  // 则需遍历candidate的输入operand，如果operand的defineOp不存在 或 存在且在scf.forall之前，则该op的move行为合法。反之（存在且在之后）将后续op的visited都清除。可以有一个index变量
   // ...
 }
 
@@ -3559,7 +3566,17 @@ void WrapDriver::processOnOp(Operation* op) {
   for (auto operand : op->getOperands()) {
     if (auto *operandOp = operand.getDefiningOp()) {
       if (checkOpIfNeedLaunch(operandOp)) {
-        processOnOp(operandOp);
+        if (failed(processOnOp(operandOp))) {
+          visited.earse(op);
+          return failure();
+        }
+        continue;
+      }
+      // 则需遍历candidate的输入operand，如果operand的defineOp不存在 或 存在且在scf.forall之前，
+      //则该op加入opsToWrapTogather是合法。反之（存在且在之后）将后续op的visited都清除。
+      if (!opsToWrapTogather.empty() && opsToWrapTogather.front()->isBeforeInRegion(operandOp)) {
+        visited.earse(op);
+        return failure();
       }
     }
   }
@@ -3570,15 +3587,15 @@ void WrapDriver::processOnOp(Operation* op) {
   llvm::DenseSet<unsigned> replacementIndexes;
   for (const auto &[idx, resVal] : llvm::enumerate(op->getResults())) {
     for (auto *candidateOp : resVal.getUsers()) {
-      if (!checkOpIfNeedLaunch(candidateOp)) {
+      if (!checkOpIfNeedLaunch(candidateOp) ||
+          failed(processOnOp(candidateOp))) {
         replacementIndexes.insert(idx);
-        continue;
       }
-      processOnOp(candidateOp);
     }
   }
   opsLaunchInfo[op] = replacementIndexes;
   replacementNum += replacementIndexes.size();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -3598,7 +3615,8 @@ void WrapDriver::processor(func::FuncOp funcOp) {
       continue;
     opsToWrapTogather.clear();
     replacementCount = 0;
-    processOnOp(candidateOp);
+    if (failed(processOnOp(candidateOp)))
+      continue;
     createWrapToLaunch();
   }
 }
