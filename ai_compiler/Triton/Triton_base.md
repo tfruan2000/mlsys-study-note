@@ -187,14 +187,14 @@ mask 为遮盖，类似decoder Attn中的mask。一是规范访存行为，防�
 
 ```python
 n_rows, n_cols = x.shape
-BLOCK_SIZE = triton.next_power_of_2(n_cols) 
+BLOCK_SIZE = triton.next_power_of_2(n_cols)
 ```
 
 ### grid
 
 调用kernel时，需要说明该kernel执行循环有几层，每层有几次，这就是 `grid` 的概念
 
-下述代码表示了这个 vector-add kernel是在一层for循环内调用执行，每次数据大小 `BLOCK_SIZE` 
+下述代码表示了这个 vector-add kernel是在一层for循环内调用执行，每次数据大小 `BLOCK_SIZE`
 
 ```python
   grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
@@ -220,7 +220,7 @@ Triton中关于grid定义：
 对比Cuda中launch kernel的行为
 
 ```cpp
-  dim3 block(BLOCK_SIZE_M, BLOCK_SIZE_N);  
+  dim3 block(BLOCK_SIZE_M, BLOCK_SIZE_N);
   dim3 grid((M + BLOCK_SIZE_M - 1) / BLOCK_SIZE_M, (N + BLOCK_SIZE_N - 1) / BLOCK_SIZE_N);
   matmul_kernel<<<grid, block>>>(Ad, Bd, Cd, M, N, K);
 ```
@@ -250,7 +250,7 @@ triton compiler依赖block-level control- and data-flow analysis来静态地sche
 
 以Matmul而言，若A为MxK，B为KxN，那么C的大小就是MxN（M和N为parallel axis大小，K为reduction轴大小）
 
-每次分块计算，单块大小BLOCK_SIZE_M x BLOCK_SIZE_N，总共进行 
+每次分块计算，单块大小BLOCK_SIZE_M x BLOCK_SIZE_N，总共进行
 $$
 \frac{M}{\text{BLOCK\_{SIZE}\_{M}}} \times \frac{N}{\text{BLOCK\_{SIZE}\_{N}}}
 $$
@@ -273,7 +273,7 @@ Triton中关于grid定义：
 对比Cuda中launch kernel的行为
 
 ```cpp
-  dim3 block(BLOCK_SIZE_M, BLOCK_SIZE_N);  
+  dim3 block(BLOCK_SIZE_M, BLOCK_SIZE_N);
   dim3 grid((M + BLOCK_SIZE_M - 1) / BLOCK_SIZE_M, (N + BLOCK_SIZE_N - 1) / BLOCK_SIZE_N);
   matmul_kernel<<<grid,block>>>(Ad, Bd, Cd, M, N, K);
 ```
@@ -288,7 +288,7 @@ Triton中关于grid定义：
 
 ```python
 pid = tl.program_id(axis=0)
-# number of program ids along the M / N axis 
+# number of program ids along the M / N axis
 num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
 num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
 ```
@@ -423,7 +423,7 @@ An encoding where each warp owns a contiguous portion of the target tensor. This
 
 #### shared layout
 
-In order to **avoid shared memory bank conflicts**, elements may be **swizzled** in memory. 
+In order to **avoid shared memory bank conflicts**, elements may be **swizzled** in memory.
 
 同一个warp内的thread同时访问同一列的数据
 
@@ -442,7 +442,7 @@ compiler支持多后端的方向：通过Linalg dialect
 
 ### 打印ir的方法
 
-在kernel后增加
+- 在kernel后增加
 
 ```python
      kernel = add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
@@ -451,3 +451,7 @@ compiler支持多后端的方向：通过Linalg dialect
      print(kernel.asm['llir'])
      print(kernel.asm['ptx'])
 ```
+
+- 运行的时候加上 `MLIR_ENABLE_DUMP=1`
+
+dumps the IR before every MLIR pass Triton runs

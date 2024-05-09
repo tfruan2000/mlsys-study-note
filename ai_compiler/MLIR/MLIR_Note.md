@@ -32,41 +32,41 @@ cmake --build . --target check-mlir
 
 - 如果是bazel编译
 
-在BUILD文件配置一下下面的内容，再bazel run 一下就可以编译出compile_commands.json
-详情自学：[https://github.com/hedronvision/bazel-compile-commands-extractor/tree/main](https://github.com/hedronvision/bazel-compile-commands-extractor/tree/main)
+  在BUILD文件配置一下下面的内容，再bazel run 一下就可以编译出compile_commands.json
+  详情自学：[https://github.com/hedronvision/bazel-compile-commands-extractor/tree/main](https://github.com/hedronvision/bazel-compile-commands-extractor/tree/main)
 
-1. 修改WORKSPACE，添加
-```bash
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+  (1) 修改WORKSPACE，添加
+  ```bash
+  load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-http_archive(
-    name = "hedron_compile_commands",
+  http_archive(
+      name = "hedron_compile_commands",
 
-    # 建议把下面两处 commit hash 换成 github 上最新的版本
-    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/ed994039a951b736091776d677f324b3903ef939.tar.gz",
-    strip_prefix = "bazel-compile-commands-extractor-ed994039a951b736091776d677f324b3903ef939",
-)
+      # 建议把下面两处 commit hash 换成 github 上最新的版本
+      url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/ed994039a951b736091776d677f324b3903ef939.tar.gz",
+      strip_prefix = "bazel-compile-commands-extractor-ed994039a951b736091776d677f324b3903ef939",
+  )
 
-load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
-hedron_compile_commands_setup()
+  load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+  hedron_compile_commands_setup()
 
-```
+  ```
 
-2.在根目录下的 `BUILD.bazel` 中添加下面语句
+  (2) 在根目录下的 `BUILD.bazel` 中添加下面语句
 
-```bash
-load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
+  ```bash
+  load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
-refresh_compile_commands(
-    name = "refresh_compile_commands",
-    # 指定目标 target 及其编译选项/参数（.bazelrc 中已有的参数/选项无需重复添加）
-    targets = {
-      "//:my_output_1": "--important_flag1 --important_flag2=true"
-    },
-)
-```
+  refresh_compile_commands(
+      name = "refresh_compile_commands",
+      # 指定目标 target 及其编译选项/参数（.bazelrc 中已有的参数/选项无需重复添加）
+      targets = {
+        "//:my_output_1": "--important_flag1 --important_flag2=true"
+      },
+  )
+  ```
 
-3.运行 `bazel run :refresh_compile_commands`
+  (3) 运行 `bazel run :refresh_compile_commands`
 
 - 配置vscode的clangd插件
 
