@@ -67,18 +67,18 @@ let TargetPrefix = "riscv" in {
                               [IntrNoMem, IntrSpeculatable]>;
 
   // Zbb
-  def int_riscv_orc_b : BitManipGPRIntrinsics;
+  def int_xxx_orc_b : BitManipGPRIntrinsics;
 
   // Zbc or Zbkc
-  def int_riscv_clmul  : BitManipGPRGPRIntrinsics;
-  def int_riscv_clmulh : BitManipGPRGPRIntrinsics;
+  def int_xxx_clmul  : BitManipGPRGPRIntrinsics;
+  def int_xxx_clmulh : BitManipGPRGPRIntrinsics;
 
   // Zbc
-  def int_riscv_clmulr : BitManipGPRGPRIntrinsics;
+  def int_xxx_clmulr : BitManipGPRGPRIntrinsics;
 
   // Zbkx
-  def int_riscv_xperm4  : BitManipGPRGPRIntrinsics;
-  def int_riscv_xperm8  : BitManipGPRGPRIntrinsics;
+  def int_xxx_xperm4  : BitManipGPRGPRIntrinsics;
+  def int_xxx_xperm8  : BitManipGPRGPRIntrinsics;
 } // TargetPrefix = "riscv"
 ```
 
@@ -144,8 +144,8 @@ class BitManipGPRIntrinsics
     : DefaultAttrsIntrinsic<[llvm_any_ty],
                             [LLVMMatchType<0>],
                             [IntrNoMem, IntrSpeculatable]>;
-// int_riscv_orc_b 是 BitManipGPRIntrinsics 的实例
-def int_riscv_orc_b : BitManipGPRIntrinsics;
+// int_xxx_orc_b 是 BitManipGPRIntrinsics 的实例
+def int_xxx_orc_b : BitManipGPRIntrinsics;
 ```
 
 ```cpp
@@ -187,14 +187,14 @@ def ADD: MyInstr{
 // 定义
 // llvm/include/llvm/IR/IntrinsicsRISCV.td
 class BitManipGPRIntrinsics;
-def int_riscv_orc_b : BitManipGPRIntrinsics;
+def int_xxx_orc_b : BitManipGPRIntrinsics;
 
 // 编译后生成的代码
 // build/include/llvm/IR/IntrinsicsRISCV.h
 namespace Intrinsic {
 enum RISCVIntrinsics : unsigned {
   ...
-  riscv_orc_b, // llvm.riscv.orc.b
+  xxx_orc_b, // llvm.riscv.orc.b
 ```
 
 ### multiclass 和 defm
@@ -221,8 +221,8 @@ multiclass MaskedAtomicRMWFourArgIntrinsics {
 
 // @llvm.riscv.masked.atomicrmw.*.{i32,i64}.<p>(
 //   ptr addr, ixlen oparg, ixlen mask, ixlenimm ordering)
-defm int_riscv_masked_atomicrmw_add : MaskedAtomicRMWFourArgIntrinsics;
-defm int_riscv_masked_atomicrmw_sub : MaskedAtomicRMWFourArgIntrinsics;
+defm int_xxx_masked_atomicrmw_add : MaskedAtomicRMWFourArgIntrinsics;
+defm int_xxx_masked_atomicrmw_sub : MaskedAtomicRMWFourArgIntrinsics;
 ```
 
 其中:
@@ -234,11 +234,11 @@ defm int_riscv_masked_atomicrmw_sub : MaskedAtomicRMWFourArgIntrinsics;
   namespace Intrinsic {
   enum RISCVIntrinsics : unsigned {
     ...
-    riscv_masked_atomicrmw_add_i32, // llvm.riscv.masked.atomicrmw.add.i32
-    riscv_masked_atomicrmw_add_i64, // llvm.riscv.masked.atomicrmw.add.i64
+    xxx_masked_atomicrmw_add_i32, // llvm.riscv.masked.atomicrmw.add.i32
+    xxx_masked_atomicrmw_add_i64, // llvm.riscv.masked.atomicrmw.add.i64
     ...
 
-  // 下降代码中直接使用 `Intrinsic::riscv_masked_atomicrmw_add_i32` 对象
+  // 下降代码中直接使用 `Intrinsic::xxx_masked_atomicrmw_add_i32` 对象
   ```
 
 ### defvar
@@ -258,9 +258,9 @@ defm int_riscv_masked_atomicrmw_sub : MaskedAtomicRMWFourArgIntrinsics;
 multiclass RISCVSFCustomVC_XV<list<string> type> {
   foreach t = type in {
     defvar ImmScalar = !eq(t, "i");
-    def "int_riscv_sf_vc_" # t # "v_se"   : RISCVSFCustomVC_XV<HasDst=0, HasSE=1, ImmScalar=ImmScalar>;
-    def "int_riscv_sf_vc_v_" # t # "v_se" : RISCVSFCustomVC_XV<HasDst=1, HasSE=1, ImmScalar=ImmScalar>;
-    def "int_riscv_sf_vc_v_" # t # "v"    : RISCVSFCustomVC_XV<HasDst=1, HasSE=0, ImmScalar=ImmScalar>;
+    def "int_xxx_sf_vc_" # t # "v_se"   : RISCVSFCustomVC_XV<HasDst=0, HasSE=1, ImmScalar=ImmScalar>;
+    def "int_xxx_sf_vc_v_" # t # "v_se" : RISCVSFCustomVC_XV<HasDst=1, HasSE=1, ImmScalar=ImmScalar>;
+    def "int_xxx_sf_vc_v_" # t # "v"    : RISCVSFCustomVC_XV<HasDst=1, HasSE=0, ImmScalar=ImmScalar>;
   }
 }
 ```
@@ -295,6 +295,8 @@ if !lt(grades[i], 60) then {
 ```
 ## 实例
 
+### 参数类型
+
 ```cpp
 class RISCVGatherVXMasked
      : DefaultAttrsIntrinsic<[llvm_anyvector_ty],
@@ -319,6 +321,21 @@ class RISCVGatherVXMasked
 
 - `let VLOperand = 4`
   这行指定了一个名为 VLOperand 的属性，并将其设置为整数值 4。这种设置可以影响生成的代码或者其他相关的逻辑。
+
+### multiclass + foreach + defm
+
+```cpp
+multiclass XXXBinaryOp {
+  defvar DataTypes = ["u8", "s8", "u16", "s16", "u32", "s32", "f16", "f32", "bf16"];
+  defvar LLVMTypes = [llvm_i8_ty, llvm_i8_ty, llvm_i16_ty, llvm_i16_ty, llvm_i32_ty, llvm_i32_ty, llvm_half_ty, llvm_float_ty, llvm_bfloat_ty];
+  foreach i = 0...8 in {
+    // Scalar operations
+    def "int_xxx_scalar_binary_" # NAME # _#DataTypes[i] : ScalarBinary<NAME # _#DataTypes[i], LLVMTypes[i]>;
+    // Vector operations
+    def "int_xxx_vector_binary_" # NAME # _#DataTypes[i] : VectorBinary<NAME # _#DataTypes[i]>;
+  }
+}
+```
 
 ## 参考
 [TableGen Overview](https://llvm.org/docs/TableGen/index.html)
