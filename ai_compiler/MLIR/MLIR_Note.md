@@ -2425,6 +2425,72 @@ void MapOp::build(
 }
 ```
 
+### 创建op
+
+使用 `OpBuilder` 来 create
+- create<OpTy>(…) : 查看 `build/tools/mlir/include/mlir/Dialect/XXX/IR/XXXOps.h.inc`中对应op的 `build` 函数
+- create(OperationState state)
+    ```cpp
+    OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
+                         newResults, op->getAttrs(), op->getSuccessors());
+     Operation *newOp = rewriter.create(state);
+    ```
+使用 `OperationState` 可以用来写一些模板函数pattern或者 `TypeConvert` 的naive_pattern，创建op会更加简单
+
+```cpp
+static std::optional<Value> getBaseMaskVal(Value maskVal) {
+  if (mask) {
+    if (...)
+      return ...;
+  }
+  return std::nullopt;
+}
+
+/// access_op(with mask) --> scf.if + access_op(without mask)
+template<typename OpTy>
+class FoldMaskAccessPattern : public OpRewritePattern<OpTy> {
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    std::optional<Value> maskBaseVal = getMaskBaseVal(op.getMask());
+    if (!maskBaseVal.has_value())
+      return failure();
+
+    auto resType = op->getResultTypes();
+    auto loc = op->getLoc();
+    // If else region is empty, it will be fold in canonicalize.
+    auto ifOp = rewriter.create<scf::IfOp>(loc,
+                                           /*resultTypes*/resType,
+                                           /*cond*/maskBaseVal.value(),
+                                           /*addElseBlock*/true);
+
+    // Then region.
+    auto maskIndex = llvm::find_if(op.getOperand(), [&](Value operandVal) {
+        return operandVal == op.getMask(); }) - op.getOperand().begin();
+    SmallVector<Value> operand;
+    operand.reverse(maskIndex);
+    operand.append(op->operand_begin(), op->operand_begin() + maskIndex - 1);
+    rewriter.setInsertionPointToStart(&ifOp.getThenRegion().front());
+    OperationState state(loc, op->getName().getStringRef(), operands,
+                         resType, op->getAttrs(), op->getSuccessors());
+    auto newOp = rewriter.create(state);
+    rewriter.create<scf::YieldOp>(loc, newOp->getResults());
+
+    // Else resgion.
+    if (!resType.empty()) {
+      rewriter.setInsertionPointToStart(&ifOp.getElseRegion().begion());
+      auto zeroVal = rewriter.create<arith::ConstantOp>(
+          loc, resType.front(), rewriter.getZeroAttr(resType.fromt()));
+      rewriter.create<scf::YieldOp>(loc, zeroVal);
+      rewriter.replaceOp(op, ifOp);
+      return success();
+    }
+
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+```
 ---
 
 ## OpFoldResult

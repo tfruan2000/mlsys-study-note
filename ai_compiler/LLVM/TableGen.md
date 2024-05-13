@@ -317,7 +317,7 @@ class RISCVGatherVXMasked
   - [LLVMMatchType<0>, LLVMMatchType<0>, llvm_anyint_ty, LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>, LLVMMatchType<1>, LLVMMatchType<1>] 定义了函数的参数类型，其中 `LLVMMatchType<0>` 和 `LLVMMatchType<1>` 表示该函数的前两个参数的类型需要匹配，而 `llvm_anyint_ty` 和 `LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>` 则分别表示第三个和第四个参数的类型。
 
 - `[ImmArg<ArgIndex<5>>, IntrNoMem]`
-  这部分定义了函数的属性，比如是否需要内存操作等。其中 ImmArg<ArgIndex<5>> 表示第六个参数是一个立即数参数，IntrNoMem 表示该函数没有内存操作。
+  这部分定义了函数的属性，比如是否需要内存操作等。其中 ImmArg<ArgIndex<5>> 表示第六个参数是一个立即数参数，IntrNoMem 表示操作无内存副作用。
 
 - `let VLOperand = 4`
   这行指定了一个名为 VLOperand 的属性，并将其设置为整数值 4。这种设置可以影响生成的代码或者其他相关的逻辑。
@@ -335,6 +335,8 @@ multiclass XXXBinaryOp {
     def "int_xxx_vector_binary_" # NAME # _#DataTypes[i] : VectorBinary<NAME # _#DataTypes[i]>;
   }
 }
+
+defm add : XXXBinaryOp;
 ```
 
 ## 参考
