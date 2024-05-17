@@ -341,6 +341,24 @@ multiclass XXXBinaryOp {
 defm add : XXXBinaryOp;
 ```
 
+## 验证
+
+验证定义的op接口主要有两个方法
+
+1. 使用 `llvm-tblgen` 生成编译 **顶层td** ，查看生成的op是否符合预期
+
+```bash
+./build/bin/llvm-tblgen llvm/include/llvm/IR/Intrinsics.td -I llvm/include/llvm -I llvm/include/llvm/IR -I build/include/ -I llvm/include/ -o log
+```
+
+2. 使用 `opt` 测试接口
+
+在 `ll` 文件中调用写好的接口，如果下面的指令报错，证明指令正确定义，且格式符合需求
+
+```bash
+./build/bin/opt llvm/test/CodeGen/RISCV/RISCVEXT/memcpy.ll -o tmp.o
+```
+
 ## 参考
 [TableGen Overview](https://llvm.org/docs/TableGen/index.html)
 [LLVM后端：TableGen简易入门](https://zhuanlan.zhihu.com/p/625227861)
