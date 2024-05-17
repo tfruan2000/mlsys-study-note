@@ -2468,7 +2468,7 @@ class FoldMaskAccessPattern : public OpRewritePattern<OpTy> {
     auto maskIndex = llvm::find_if(op.getOperand(), [&](Value operandVal) {
         return operandVal == op.getMask(); }) - op.getOperand().begin();
     SmallVector<Value> operand;
-    operand.reverse(maskIndex);
+    operand.reserve(maskIndex);
     operand.append(op->operand_begin(), op->operand_begin() + maskIndex - 1);
     rewriter.setInsertionPointToStart(&ifOp.getThenRegion().front());
     OperationState state(loc, op->getName().getStringRef(), operands,
@@ -2478,7 +2478,7 @@ class FoldMaskAccessPattern : public OpRewritePattern<OpTy> {
 
     // Else resgion.
     if (!resType.empty()) {
-      rewriter.setInsertionPointToStart(&ifOp.getElseRegion().begion());
+      rewriter.setInsertionPointToStart(&ifOp.getElseRegion().front());
       auto zeroVal = rewriter.create<arith::ConstantOp>(
           loc, resType.front(), rewriter.getZeroAttr(resType.fromt()));
       rewriter.create<scf::YieldOp>(loc, zeroVal);

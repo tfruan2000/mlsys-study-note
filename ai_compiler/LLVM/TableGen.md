@@ -297,30 +297,32 @@ if !lt(grades[i], 60) then {
 
 ### 参数类型
 
+常见的参数类型有：
+
+- 整数
+  - llvm_i8_ty, llvm_i16_ty, llvm_i32_ty, llvm_i64_ty
+  - llvm_anyint_ty : 任意整数
+  - `llvm_i32_ty` 一般可以用来表示 `imm` 或 `Int32Regs`
+
+- 浮点
+  - llvm_half_ty, llvm_float_ty, llvm_bfloat_ty
+
+- 地址
+  - llvm_ptr_ty : 任意指针
+
+例如：一个BinaryOp的Intrinsic，可以定义为
+
 ```cpp
-class RISCVGatherVXMasked
-     : DefaultAttrsIntrinsic<[llvm_anyvector_ty],
-                 [LLVMMatchType<0>, LLVMMatchType<0>, llvm_anyint_ty,
-                  LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>, LLVMMatchType<1>,
-                  LLVMMatchType<1>],
-                 [ImmArg<ArgIndex<5>>, IntrNoMem]>, RISCVVIntrinsic {
-  let VLOperand = 4;
-}
+  class XXXIntrinsic<string name>
+    : Intrinsic<[], [llvm_ptr_ty, llvm_ptr_ty, llvm_ptr_ty, llvm_i32_ty],
+                []>,
+      ClangBuiltin<"__XXX_" # name>;
 ```
 
-- `class RISCVGatherVXMasked : DefaultAttrsIntrinsic<...>`
-  这里定义了一个类 RISCVGatherVXMasked，它继承自 DefaultAttrsIntrinsic，表示这是一个具有默认属性的内置函数。内置函数通常是 LLVM 中的一种特殊操作，可以在 LLVM IR 中使用。
+其中 `[llvm_ptr_ty, llvm_ptr_ty, llvm_ptr_ty, llvm_i32_ty]` 分别表示 `addr $dst,addr $lsh, addr $rsh, Int32Regs $size`。
 
-- `<[llvm_anyvector_ty], [...], [...]>`
-  这些尖括号中的内容定义了内置函数的特性，如返回类型、参数类型等。具体来说：
-  - [llvm_anyvector_ty] 表示该函数的**返回类型**为任意向量类型。
-  - [LLVMMatchType<0>, LLVMMatchType<0>, llvm_anyint_ty, LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>, LLVMMatchType<1>, LLVMMatchType<1>] 定义了函数的参数类型，其中 `LLVMMatchType<0>` 和 `LLVMMatchType<1>` 表示该函数的前两个参数的类型需要匹配，而 `llvm_anyint_ty` 和 `LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>` 则分别表示第三个和第四个参数的类型。
-
-- `[ImmArg<ArgIndex<5>>, IntrNoMem]`
-  这部分定义了函数的属性，比如是否需要内存操作等。其中 ImmArg<ArgIndex<5>> 表示第六个参数是一个立即数参数，IntrNoMem 表示操作无内存副作用。
-
-- `let VLOperand = 4`
-  这行指定了一个名为 VLOperand 的属性，并将其设置为整数值 4。这种设置可以影响生成的代码或者其他相关的逻辑。
+- 读写属性
+  - `IntrReadMem`, `IntrWriteMem`, `IntrNoMem`
 
 ### multiclass + foreach + defm
 
