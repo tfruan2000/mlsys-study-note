@@ -235,7 +235,7 @@ Operation *create(const OperationState &state);
 - createOrFold
 返回值是 Value （也可以直接作为 OpFoldResult 使用)
 创建op后立即尝试fold，一般在创建某些有xxxOp.cpp中有opFoldPattern的op时使用，例如一些arith dialect 中的op 以及 memref.dim
-> 参见: mlir/lib/Dialect/Complex/IR/ComplexOps.cpp 和 mlir/lib/Dialect/MLU/IR/DimFoldInterfaceImpls.cpp
+> 参见: mlir/lib/Dialect/Complex/IR/ComplexOps.cpp
 
 #### clone
 
@@ -2953,6 +2953,8 @@ switch(conditionallySpeculatable.getSpeculatability()) {
 
 ## TableGen
 
+基础语法 [llvm tablegen](../LLVM/TableGen.md)
+
 ### 可变/可选参数
 
 ```cpp
@@ -3038,6 +3040,57 @@ def SubOp : ToyOp<"sub", [Pure]> {
   let hasVerifier = true;
 }
 ```
+
+例如： `fuse-into-containing-op` 的定义
+
+```cpp
+def FuseIntoContainingOp :
+    Op<Transform_Dialect, "structured.fuse_into_containing_op",
+      [DeclareOpInterfaceMethods<TransformOpInterface,
+          ["allowsRepeatedHandleOperands"]>,
+       DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+       ReportTrackingListenerFailuresOpTrait]> {
+  let summary = "Fuse a producer into a containing operation.";
+  let description = [{
+    ...
+  }];
+  let arguments = (ins TransformHandleTypeInterface:$producer_op,
+                       TransformHandleTypeInterface:$containing_op);
+  let results = (outs TransformHandleTypeInterface:$fused_op,
+                      TransformHandleTypeInterface:$new_containing_op);
+  let assemblyFormat = "$producer_op `into` $containing_op attr-dict "
+                       " `:` functional-type(operands, results)";
+  let builders = [
+    OpBuilder<(ins "Value":$producerOp, "Value":$containingOp)>
+  ];
+}
+```
+
+- `FuseIntoContainingOp` 继承自 `Op`，这是所有op的基类，实现了一些共有的方法
+  ```cpp
+  template <typename ConcreteType, template <typename T> class... Traits>
+  class Op : public OpState, public Traits<ConcreteType>... {
+  public:
+    /// Inherit getOperation from `OpState`.
+    using OpState::getOperation;
+    using OpState::verify;
+    using OpState::verifyRegions;
+    ...
+  ```
+
+- `DeclareOpInterfaceMethods` 用来声明一个op实现了某个interface
+
+- `builders` 用来声明一个op的builder。这里只是声明好了接口，要在其对应的文件中写一下实现
+  ```cpp
+  void transform::FuseIntoContainingOp::build(OpBuilder &builder,
+                                              OperationState &result,
+                                              Value producerOp,
+                                              Value containingOp) {
+    result.addOperands({producerOp, containingOp});
+    auto resultType = transform::AnyOpType::get(builder.getContext());
+    result.addTypes({resultType, resultType});
+  }
+  ```
 
 ---
 
@@ -3609,7 +3662,15 @@ private:
 
 bool WrapDriver::checkOpIfNeedLaunch(Operation* op) {
   // Check if the op is a candidate to be wrapped.
-  // ...
+  // 1. op needs to be a top level op.
+  op.getParentOp() == rootOp(func::FuncOp)
+  // 2. operands must has tensor semantic
+  op.getNumresults() != 0
+  llvm::all_of(op->getOperandTypes(), [&](Type operandtype){
+    return operandtype.isIntOrIndexOrFloat() ||
+    llvm::isa<RankedTensorType>(operandtype);
+  });
+  // The result value can only be scalar or ranked tensor with static shape.
 }
 
 //===----------------------------------------------------------------------===//

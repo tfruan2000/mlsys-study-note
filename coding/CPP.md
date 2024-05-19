@@ -73,6 +73,25 @@ assert(a && “debug info”)
 
 a一般为bool表达式，当a的结果为false时，输出”debug info”
 
+### 类中重载
+
+```cpp
+class AliasResult {
+public:
+  enum Kind {
+    NoAlias = 0,
+    PartialAlias,
+    MayAlias,
+    MustAlias,
+  };
+  AliasResult(Kind K) : kind(K) {};
+  bool operator==(const AliasResult &other) const { return kind == other.kind; }
+  bool operator!=(const AliasResult &other) const { return !(*this == other); }
+private:
+  Kind kind;
+};
+```
+
 ## **1. 内存分区模型**
 
 C++程序在执行时，将内存大方向划分为**4个区域**
