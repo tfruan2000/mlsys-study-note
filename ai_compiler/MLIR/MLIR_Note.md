@@ -419,8 +419,21 @@ class Pattern {
 一些子类：
 
 - OpOrInterfaceRewritePatternBase
-    - OpRewritePattern : 使用 SourceOp::getOperationName() 来match
-    - OpInterfaceRewritePattern : 使用 SourceOp::getInterfaceID() 来match
+    - **OpRewritePattern** : 使用 SourceOp::getOperationName() 来match
+    - **OpInterfaceRewritePattern** : 使用 SourceOp::getInterfaceID() 来match
+
+```cpp
+struct AddOpPat : public OpRewritePattern<AddOp> {
+  using OpRewritePattern<AddOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(AddOp op,
+                                PatternRewriter & rewriter) const override{
+
+static EraseDeadLinalgOp : public OpInterfaceRewritePattern<LinalgOp> {
+  using OpInterfaceRewritePattern<LinalgOp>::OpInterfaceRewritePattern;
+  LogicalResult matchAndRewrite(LinalgOp op,
+                                PatternRewriter &rewriter) const override{
+```
+
 - OpTraitRewritePattern
     -  使用 TypeID::get<TraitType>() 来match
     - 例如某些elementwiseTrait : `OpTraitRewritePattern<OpTrait::Elementwise>`
@@ -522,7 +535,7 @@ void mlir::populateAffineToStdConversionPatterns(RewritePatternSet &patterns) {
 ```cpp
 struct AddOpPat : public OpRewritePattern<AddOp> {
 	using OpRewritePattern<AddOp>::OpRewritePattern;
-	LogicalResult matchAndRewriter(AddOp op,
+	LogicalResult matchAndRewrite(AddOp op,
 		PatternRewriter & rewriter) const override{
 	xxx
 	return success();
@@ -993,6 +1006,54 @@ LLVM_DEBUG(llvm::dbgs() << "Checking op: " << *op << "\n");
     };
     ```
 
+#### interface
+
+`mlir/include/mlir/Dialect/Linalg/IR/LinalgInterfaces.td`
+
+- payloadUsesValueFromOperand
+
+输入是 `OpOperand`，返回这个 `OpOperand` 是否被使用，由此来获得准确 `Memory-Effect`。(inputOperand有user则有read，initOperand必被write，若有user则有read)
+
+例如 https://github.com/llvm/llvm-project/pull/92079/files 中
+
+```cpp
+static void getGenericEffectsImpl(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects,
+    LinalgOp linalgOp) {
+  SmallVector<Value> inputOperands = linalgOp.getDpsInputs();
+  for (auto [index, operand] : llvm::enumerate(inputOperands)) {
+    if (!llvm::isa<MemRefType>(operand.getType()))
+      continue;
+    if (linalgOp.payloadUsesValueFromOperand(&linalgOp->getOpOperand(index))) {
+      effects.emplace_back(MemoryEffects::Read::get(), operand, /*stage=*/0,
+                           /*effectOnFullRegion=*/true,
+                           SideEffects::DefaultResource::get());
+    }
+  }
+  unsigned inputOperandSize = inputOperands.size();
+
+  for (auto [index, operand] : llvm::enumerate(linalgOp.getDpsInits())) {
+    if (!llvm::isa<MemRefType>(operand.getType()))
+      continue;
+    if (linalgOp.payloadUsesValueFromOperand(
+            &linalgOp->getOpOperand(index + inputOperandSize))) {
+      effects.emplace_back(MemoryEffects::Read::get(), operand, /*stage=*/0,
+                           /*effectOnFullRegion=*/true,
+                           SideEffects::DefaultResource::get());
+    }
+    effects.emplace_back(MemoryEffects::Write::get(), operand, /*stage=*/0,
+                         /*effectOnFullRegion=*/true,
+                         SideEffects::DefaultResource::get());
+  }
+}
+
+```
+
+#### conversion
+
+强烈推荐项目 [triton-linalg](https://github.com/Cambricon/triton-linalg)
+
 ### scf
 
 ```cpp
@@ -1322,6 +1383,7 @@ OpOperandVector getDpsInitOperands()
 ```
 
 - BufferizableOpInterface：在oneShotBufferize pass会对有该inferface的op进行bufferize
+
 - TilingInterface：对于有该interface的op可以cast成该interface `llvm::cast<TilingInterface>(op)`
     - getLoopIteratorTypes：每个元素为utils::IteratorType，表示为utils::IteratorType::parallel或utils::IteratorType::reduction
     - getIterationDomain：每个元素是一个Range
@@ -1331,6 +1393,14 @@ OpOperandVector getDpsInitOperands()
         	tileSize = std::min(setTileSize, intAttr.cast<IntegerAttr>().getInt());
         }
         ```
+
+- hasPureTensorSemantics
+  所有operand都不为memref，至少有一个为tensor
+
+- hasPureBufferSemantics
+
+- isScalar
+`!llvm::isa<BaseMemRefType, TensorType>(opOperand->get().getType());`
 
 
  ### DialectInlinerInterface
