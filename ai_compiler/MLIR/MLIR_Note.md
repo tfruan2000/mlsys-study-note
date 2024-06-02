@@ -940,7 +940,8 @@ mlir/include/mlir/IR/BuiltinTypes.h
     - isIntOrIndex
     - isIntOrFloat
 - 生成 get
-    - RankedTenorType newType = RankedTensorType::get({srcDims[0], 1}), srcType.getElementType)
+    -  RankedTensorType::get(ArrafRef<int64_t> shapes, elemType)
+      例如 RankedTenorType newType = RankedTensorType::get({srcDims[0], 1}), srcType.getElementType)
     - IntegerType::get(op→getContext(), 64);
 
 ---
@@ -1870,6 +1871,56 @@ llvm/include/llvm/ADT/SetOperations.h
 - llvm::set_intersection(A, B): 计算集合A与集合B的交集，并将结果赋值给集合A
 - llvm::set_subtract(A, B): 计算集合A与集合B的差集（在A中但不在B中），并将结果赋值给集合A
 
+
+---
+
+## Matcher
+
+```bash
+mlir/include/mlir/IR/Matchers.h
+```
+
+### matchPattern
+
+用来确定输入对象符合某种特性(`Pattern`)
+
+- matchPattern(Value, Pattern)
+- matchPattern(Operation *, Pattern)
+- matchPattern(Attribute, Pattern)
+
+实现形式例如: (对于不同类型的输入，都有一个 `match` 函数)
+
+```cpp
+template <typename Pattern>
+inline bool matchPattern(Attribute attr, const Pattern &pattern) {
+  static_assert(llvm::is_detected<detail::has_compatible_matcher_t, Pattern,
+                                  Attribute>::value,
+                "Pattern does not support matching Attributes");
+  if (!attr)
+    return false;
+  return const_cast<Pattern &>(pattern).match(attr);
+}
+```
+
+### Pattern
+一些常见的 Pattern
+- m_Constant() : 对于operation*而言，需要满足 `op->hasTrait<OpTrait::ConstantLike>()`
+- m_AnyZeroFloat() : 是0且是APFloat，则匹配成功
+- m_Zero() : 是0且是APInt，则匹配成功
+- m_OneFloat() : 是1且是APFloat，则匹配成功
+- m_One() : 是1且是APInt，则匹配成功
+- m_ConstantFloat(FloatAttr::ValueType *bind_value) : 会把值写入bind_value(binds the constant integer value)
+- m_ConstantInt(IntegerAttr::ValueType *bind_value)
+
+```cpp
+auto opFoldIsConstantValue = [](OpFoldResult ofr, int64_t value) {
+  if (auto attr = llvm::dyn_cast_if_present<Attribute>(ofr))
+    return cast<IntegerAttr>(attr).getInt() == value;
+  llvm::APInt actual;
+  return matchPattern(ofr.get<Value>(), m_ConstantInt(&actual)) &&
+         actual.getSExtValue() == value;
+};
+```
 
 ---
 
