@@ -84,6 +84,28 @@ ctrl + p 输入 clangd，先点击 下载language server；然后 加 settings.j
 
 使用compile_commands.json主要是方便索引文件，特别是td生成的 `inc` 文件，但也可以人为从 `build/tools/mlir/include/mlir/xxx/xxx` 中找到编译出的inc
 
+3. 代码格式
+
+- clang-format
+安装
+```bash
+apt-get install clang-format
+```
+
+创建`.clang-format`
+```bash
+BasedOnStyle: LLVM
+ColumnLimit: 80
+```
+
+格式化
+```bash
+# 单个文件
+clang-format -i path/to/your/file.cpp
+# 整个目录
+find path/to/your/project -name '*.cpp' -o -name '*.h' | xargs clang-format -i
+```
+
 ## Adaptor
 
 只有**operands没有results**的中间态，可以从adaptor中获得很多基础信息
