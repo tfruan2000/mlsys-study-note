@@ -803,6 +803,8 @@ mlir/Conversion/LLVMCommon/TypeConverter.h
 对type对改写一般通过 `typeConverter` ，常配合 `ConversionTarget` 使用。其一般包含三个主要函数
 
 - `addConversion` ：定义type转换规则
+
+例如
 ```cpp
 typeConverter converter;
 converter.addConversion([&]ToyIntegerType t) -> std::optional<Integer> {
@@ -812,6 +814,7 @@ converter.addConversion([&]ToyIntegerType t) -> std::optional<Integer> {
 
 - `addTargetMaterialization` ：sourceType→targetType
 - `addSourceMaterialization` ：targetType→sourceType
+- `addArgumentMaterialization`
 
 ```cpp
 static Value materializeToXXXCallback(OpBuilder &builder, Type type, ValueRange values) {
@@ -1514,8 +1517,7 @@ isa_and_nonnull / isa_and_present：允许op为null作为输入，返回null
 - cast ：直接转换，失败时报错
 - cast_or_null ：允许op为null作为输入，返回null
 - dyn_cast ： 尝试转换，失败时返回null，op为null时报错
-- dyn_cast_if_present / dyn_cast_or_null ：  尝试转换，失败时返回null，op为null时返回null
-    好玩的地方
+- dyn_cast_if_present / dyn_cast_or_null ：尝试转换，失败时返回null，op为null时返回null
     ```cpp
     template <class X, class Y> auto dyn_cast_or_null(const Y &Val) {
       return dyn_cast_if_present<X>(Val);
@@ -2483,8 +2485,6 @@ Pattern TileParallelofConvOpUseRange with benefit(9) {
 }
 ```
 
-
-
 ---
 
 ## Pass
@@ -2724,31 +2724,115 @@ mlir/include/mlir/Transforms/RegionUtils.h
 region包含若干个block，一般linalgOp都包含一个region
 
 - bool hasOneBlock() 常用来判断region内只有一个block，取Block的时候用 `a.front()`
+
 - getUsedValuesDefinedAbove(MutableArrayRef<Region> regions, SetVector<Value> &values)
 收集在regions中使用，但不在region中的blockArg上定义的Value，将其放入values
-- getOps() : `for (Operation &op : region.getOps())`
+
+- takeBody: 把另外一个region的block占为己有(相当于把另外一个region的block的所有权给拿走了)
+`newforallOp.getRegion().takeBody(forallOp.getRegion());`
+
+- getOps() : 获得region内的所有op，有相对次序
+
+`for (Operation &op : region.getOps())`
 
 ```cpp
 for (Region *region : regions()) {
     std::queue<Operation *>worklist; // 如果不在乎遍历顺序，或者可以按压入顺序来逆序遍历
     for (Operation &op : region.getOps()) {
-        worklist.push(&op);
+      worklist.push(&op);
     }
     while (!worklist.empty()) {
-        Operation *op = worklist.front();
-        worklist.pop();
-        if (op->getParentRegion() != region)
-            // 防止某些op提前被修改
-            continue;
+      Operation *op = worklist.front();
+      worklist.pop();
+      if (op->getParentRegion() != region)
+        // 防止某些op提前被修改
+        continue;
     }
     ...
 }
 ```
 
-- takeBody: 把另外一个region的block占为己有(相当于把另外一个region的block的所有权给拿走了)
+举例：合并多余的barrier op
+```cpp
+static bool hasReadOrWriteEffect(Operation *op) {
+  if (auto interface = dyn_cast<MemoryEffectOpInterface>(op)) {
+    if (interface.hasEffect<MemoryEffects::Read>() ||
+        interface.hasEffect<MemoryEffects::Write>())
+      return true;
+  }
+  // Explore the op region.
+  for (Region &region : op->getRegions()) {
+    for (Operation &innerOp : region.getOps())
+      if (hasReadOrWriteEffect(&innerOp))
+        return true;
+  }
+  return false;
+}
 
-`newforallOp.getRegion().takeBody(forallOp.getRegion());`
+static void foldBarrierInFunc(gpu::FuncOp func) {
+  auto barrierOpVec = llvm::to_vector(func.getOps<gpu::BarrierOp>());
+  size_t numOfBarrier = barrierOpVec.size();
+  if (numOfBarrier < 2)
+    return;
 
+  llvm::SmallDenseSet<Operation *> opsToCombine;
+  size_t idxOfFront = 0;
+  for (size_t idxOfBack = 1; idxOfBack < numOfBarrier; ++idxOfBack) {
+    gpu::BarrierOp frontOp = barrierOpVec[idxOfFront];
+    gpu::BarrierOp backOp = barrierOpVec[idxOfBack];
+    bool canBeCombined = true;
+    auto currentOp = frontOp->getNextNode();
+    // Combine consecutive barriers.
+    //   ```mlir
+    //     OpA (memref)
+    //     barrier (tag = 0)
+    //     barrier (tag = 1)
+    //     barrier (tag = 2)
+    //     OpB (memref)
+    //   ------>
+    //     OpA (memref)
+    //     barrier (tag = 0)
+    //     OpB (memref)
+    //   ```
+    while (currentOp != backOp) {
+      if (hasReadOrWriteEffect(currentOp)) {
+        // If the ops between two barriers do not have write or read
+        // memory effects, they can be combined.
+        //   ```mlir
+        //     barrier (tag = 0)
+        //     OpA (read)
+        //     barrier (tag = 1)
+        //     barrier (tag = 2)
+        //     OpC (no read/write effect)
+        //     barrier (tag = 3)
+        //     OpB (write)
+        //   ------>
+        //     barrier (tag = 0)
+        //     OpA (read)
+        //     barrier (tag = 1)
+        //     OpC (no effect)
+        //     OpB (write)
+        //   ```
+        canBeCombined = false;
+        break;
+      }
+      currentOp = currentOp->getNextNode();
+    }
+
+    if (canBeCombined) {
+      opsToCombine.insert(backOp);
+    } else {
+      // Update the idx of frontOp.
+      idxOfFront = idxOfBack;
+    }
+  }
+
+  IRRewriter rewriter = IRRewriter(func->getContext());
+  for (auto barrierOp : opsToCombine) {
+    rewriter.eraseOp(barrierOp);
+  }
+}
+```
 
 
 ---
