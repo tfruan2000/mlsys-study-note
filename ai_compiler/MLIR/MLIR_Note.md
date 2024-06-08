@@ -2755,18 +2755,108 @@ for (Region *region : regions()) {
 举例：合并多余的barrier op
 ```cpp
 static bool hasReadOrWriteEffect(Operation *op) {
-  if (auto interface = dyn_cast<MemoryEffectOpInterface>(op)) {
-    if (interface.hasEffect<MemoryEffects::Read>() ||
-        interface.hasEffect<MemoryEffects::Write>())
-      return true;
+  WalkResult ret = op->walk([&](Operation *innerOp) ->WalkResult {
+    if (auto interface = dyn_cast<MemoryEffectOpInterface>(innerOp)) {
+      if (interface.hasEffect<MemoryEffects::Read>() ||
+          interface.hasEffect<MemoryEffects::Write>())
+        return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return ret == WalkResult::interrupt();
+}
+
+// 下面的op都是随意的给的
+// std::optional<Attribute> getExecutorAttr(Operation *op) {
+//   llvm::SmallDenseSet<Attribute> executorSets;
+//   WalkResult ret = op->walk([&](Operation *innerOp) ->WalkResult {
+//     if(llvm::isa<gpu::BarrierOp, gpu::MemsetOp, gpu::PrintfOp>(innerOp)) {
+//       executorSets.insert(gpu);
+//       return WalkResult::advance();
+//     }
+//     if(llvm::isa<gpu::LaunchOp>(innerOp)) {
+//       executorSets.insert(cpu);
+//       return WalkResult::advance();
+//     }
+//     WalkResult switchRes = llvm::TypeSwitch<Operation *, WalkResult>(innerOp)
+//         .Case<gpu::AllocOp, gpu::SubgroupMmaStoreMatrixOp>([&](auto oriOp) {
+//           std::optional<Attribute> executor = oriOp.getExecutorAttr();
+//           if (!executor.has_value())
+//             return WalkResult::interrupt();
+//           executorSets.insert(executor.value());
+//           return WalkResult::advance();
+//         }
+//         .Default([&](Operation *other) {
+//           // 没有读写effect op就不管；有读写effect op，如果有region也不管（从region里面的op获取）
+//           if(hasReadOrWriteEffect(other) && other->getNumRegions() == 0)
+//             return WalkResult::interrupt();
+//           return WalkResult::advance();
+//         });
+//     return switchRes;
+//   });
+//   if (ret == WalkResult::advance() && executorSets.size() == 1)
+//     return *executorSets.begin();
+//   return std::nullopt;
+// }
+
+std::optional<Attribute> getExecutorAttr(Operation *op) {
+  if(llvm::isa<gpu::BarrierOp, gpu::MemsetOp, gpu::PrintfOp>(op)) {
+    return gpu;
   }
-  // Explore the op region.
-  for (Region &region : op->getRegions()) {
-    for (Operation &innerOp : region.getOps())
-      if (hasReadOrWriteEffect(&innerOp))
+  if(llvm::isa<gpu::LaunchOp>(op)) {
+    return cpu;
+  }
+  std::optional<Attribute> executor;
+  bool hasExecutorAttr = llvm::TypeSwitch<Operation *, bool>(op)
+      .Case<gpu::AllocOp, gpu::SubgroupMmaStoreMatrixOp>([&](auto oriOp) {
+        executor = oriOp.getExecutorAttr();
         return true;
+      }
+      .Default([&](Operation *other) {
+        return false;
+      });
+  if (!hasExecutorAttr) {
+    llvm::SmallDenseSet<Attribute> executorSets;
+    WalkResult ret = op->walk([&](Operation *innerOp) -> WalkResult {
+      if (innerOp == op || !hasReadOrWriteEffect(innerOp))
+        return WalkResult::advance();
+      auto currentExecutor = getExecutorAttr(innerOp);
+      if (currentExecutor.has_value()) {
+        exectutor.insert(currentExecutor);
+        return WalkResult::advance();
+      }
+      // 如果innerOp有读写effect，而且没有region，且没有获得executor的值，
+      // 那么就无法判断executor，采取保守
+      return other->getNumRegions() == 0 ?
+          WalkResult::interrupt() : WalkResult::advance();
+    });
+    if (ret == WalkResult::advance() && executorSets.size() == 1)
+      return *executorSets.begin();
   }
-  return false;
+  return executor;
+}
+
+bool checkBarriersCanBeCombined(Operation *front,
+    Operation *backOp, std::optional<Attribute> &recordExecutor) {
+  bool canBeCombined = true;
+  auto currentOp = frontOp->getNextNode();
+  // Combine consecutive barriers.
+  while (currentOp != backOp) {
+    // 当barrier之间全为无读写effect的op也可以合并
+    if (hasReadOrWriteEffect(currentOp)) {
+      auto currentExecutor = getExecutorAttr(currentOp);
+      if (!currentExecutor.has_value() ||
+          (recordExecutor.has_value() &&
+           (recordExecutor.value() != currentExecutor.value()))) {
+        canBeCombined = false;
+        break;
+      }
+      if (!recordExecutor.has_value()) {
+        recordExecutor = curretExecutor;
+      }
+    }
+    currentOp = currentOp->getNextNode();
+  }
 }
 
 static void foldBarrierInFunc(gpu::FuncOp func) {
@@ -2780,43 +2870,16 @@ static void foldBarrierInFunc(gpu::FuncOp func) {
   for (size_t idxOfBack = 1; idxOfBack < numOfBarrier; ++idxOfBack) {
     gpu::BarrierOp frontOp = barrierOpVec[idxOfFront];
     gpu::BarrierOp backOp = barrierOpVec[idxOfBack];
-    bool canBeCombined = true;
-    auto currentOp = frontOp->getNextNode();
-    // Combine consecutive barriers.
-    //   ```mlir
-    //     OpA (memref)
-    //     barrier (tag = 0)
-    //     barrier (tag = 1)
-    //     barrier (tag = 2)
-    //     OpB (memref)
-    //   ------>
-    //     OpA (memref)
-    //     barrier (tag = 0)
-    //     OpB (memref)
-    //   ```
-    while (currentOp != backOp) {
-      if (hasReadOrWriteEffect(currentOp)) {
-        // If the ops between two barriers do not have write or read
-        // memory effects, they can be combined.
-        //   ```mlir
-        //     barrier (tag = 0)
-        //     OpA (read)
-        //     barrier (tag = 1)
-        //     barrier (tag = 2)
-        //     OpC (no read/write effect)
-        //     barrier (tag = 3)
-        //     OpB (write)
-        //   ------>
-        //     barrier (tag = 0)
-        //     OpA (read)
-        //     barrier (tag = 1)
-        //     OpC (no effect)
-        //     OpB (write)
-        //   ```
-        canBeCombined = false;
-        break;
+    std::optional<Attribute> recordExecutor;
+    bool canBeCombined =
+        checkBarriersCanBeCombined(frontOp, backOp, recordExecutor);
+    if (recordExecutor.has_value() && canBeCombined = true) {
+      size_t idxOfNext =  idxOfBack + 1;
+      if (idxOfNext < numOfBarrier) {
+        canBeCombined = checkBarriersCanBeCombined(backOp,
+                                                   barrierOpVec[idxOfNext],
+                                                  recordExecutor);
       }
-      currentOp = currentOp->getNextNode();
     }
 
     if (canBeCombined) {
