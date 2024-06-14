@@ -1781,6 +1781,11 @@ size_t mlir::moveLoopInvariantCode(LoopLikeOpInterface loopLike) {
 
 - llvm::make_early_inc_range
     - 允许range中的元素被修改，且不影响iterator。例如遍历DenseMap对符合条件的iterator进行erase
+    ```
+      for (Block *block : llvm::make_early_inc_range(blockVec)) {
+        ... // earse/replace ops in block
+      }
+    ```
 
 ### find
 
@@ -2767,54 +2772,26 @@ static bool hasReadOrWriteEffect(Operation *op) {
 }
 
 // 下面的op都是随意的给的
-// std::optional<Attribute> getExecutorAttr(Operation *op) {
-//   llvm::SmallDenseSet<Attribute> executorSets;
-//   WalkResult ret = op->walk([&](Operation *innerOp) ->WalkResult {
-//     if(llvm::isa<gpu::BarrierOp, gpu::MemsetOp, gpu::PrintfOp>(innerOp)) {
-//       executorSets.insert(gpu);
-//       return WalkResult::advance();
-//     }
-//     if(llvm::isa<gpu::LaunchOp>(innerOp)) {
-//       executorSets.insert(cpu);
-//       return WalkResult::advance();
-//     }
-//     WalkResult switchRes = llvm::TypeSwitch<Operation *, WalkResult>(innerOp)
-//         .Case<gpu::AllocOp, gpu::SubgroupMmaStoreMatrixOp>([&](auto oriOp) {
-//           std::optional<Attribute> executor = oriOp.getExecutorAttr();
-//           if (!executor.has_value())
-//             return WalkResult::interrupt();
-//           executorSets.insert(executor.value());
-//           return WalkResult::advance();
-//         }
-//         .Default([&](Operation *other) {
-//           // 没有读写effect op就不管；有读写effect op，如果有region也不管（从region里面的op获取）
-//           if(hasReadOrWriteEffect(other) && other->getNumRegions() == 0)
-//             return WalkResult::interrupt();
-//           return WalkResult::advance();
-//         });
-//     return switchRes;
-//   });
-//   if (ret == WalkResult::advance() && executorSets.size() == 1)
-//     return *executorSets.begin();
-//   return std::nullopt;
-// }
-
 std::optional<Attribute> getExecutorAttr(Operation *op) {
-  if(llvm::isa<gpu::BarrierOp, gpu::MemsetOp, gpu::PrintfOp>(op)) {
-    return gpu;
-  }
-  if(llvm::isa<gpu::LaunchOp>(op)) {
-    return cpu;
-  }
   std::optional<Attribute> executor;
-  bool hasExecutorAttr = llvm::TypeSwitch<Operation *, bool>(op)
-      .Case<gpu::AllocOp, gpu::SubgroupMmaStoreMatrixOp>([&](auto oriOp) {
-        executor = oriOp.getExecutorAttr();
-        return true;
-      }
-      .Default([&](Operation *other) {
-        return false;
-      });
+  bool hasExecutorAttr =
+      llvm::TypeSwitch<Operation *, bool>(op)
+          .Case<gpu::BarrierOp, gpu::MemsetOp,
+                gpu::PrintfOp> ([&](auto oriOp) {
+            executor = gpu;
+            return true;
+          }
+          .Case<gpu::LaunchOp, gpu::AllocOp> ([&](auto oriOp) {
+            executor = cpu;
+            return true;
+          }
+          .Case<gpu::SubgroupMmaStoreMatrixOp> ([&](auto oriOp) {
+            executor = oriOp.getExecutorAttr();
+            return true;
+          }
+          .Default([&](Operation *other) {
+            return false;
+          });
   if (!hasExecutorAttr) {
     llvm::SmallDenseSet<Attribute> executorSets;
     WalkResult ret = op->walk([&](Operation *innerOp) -> WalkResult {
@@ -2822,13 +2799,11 @@ std::optional<Attribute> getExecutorAttr(Operation *op) {
         return WalkResult::advance();
       auto currentExecutor = getExecutorAttr(innerOp);
       if (currentExecutor.has_value()) {
-        exectutor.insert(currentExecutor);
+        executorSets.insert(currentExecutor.value());
         return WalkResult::advance();
       }
-      // 如果innerOp有读写effect，而且没有region，且没有获得executor的值，
       // 那么就无法判断executor，采取保守
-      return other->getNumRegions() == 0 ?
-          WalkResult::interrupt() : WalkResult::advance();
+      return WalkResult::interrupt();
     });
     if (ret == WalkResult::advance() && executorSets.size() == 1)
       return *executorSets.begin();

@@ -2882,3 +2882,10 @@ int main()
 
 该类型的对象a首先需要使用 `a.has_value()` 来判断值是否存在，然后使用 `a.value()` 或 `*a` 来获得值。
 
+当使用一个 `std::optional` 给另外一个 `std::optional` 对象赋值时
+```cpp
+template <typename valTy>
+void func(const std::optional<valTy> from, std::optional<valTy> &to) {
+  to = from.has_value() ? from.value() : std::nullopt;
+}
+```
