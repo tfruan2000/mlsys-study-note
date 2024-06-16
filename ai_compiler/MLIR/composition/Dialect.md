@@ -42,11 +42,172 @@ struct MatmulOpInterface : public AggregatedOpInterface::ExternalModel<
 };
 ```
 
-## 举例
+## Affine
 
-### linalg
+### op
 
-#### op
+op定义详见 [affine dialect ops](https://mlir.llvm.org/docs/Dialects/Affine/)
+
+- affine.apply
+- affine.max / affine.min
+- affine.index
+- affine.for
+- affine.if
+
+op相关的一些函数
+
+```bash
+mlir/lib/Dialect/Affine/IR/AffineOps.cpp
+```
+
+### AffineMap
+
+```bash
+mlir/inlcude/mlir/IR/AffineMap.h
+mlir/lib/IR/AffineMap.cpp
+```
+
+- `getFilteredIdentityMap` 创建条件过滤affinemap
+```cpp
+/// getFilteredIdentityMap(3, [false, false, true]) -> affine_map<(d0, d1, d2) -> (d2)>
+AffineMap getFilteredIdentityMap(MLIRContext *ctx, unsigned numDims,
+                                llvm::function_ref<bool(AffineDimExpr)> keepDimFilter);
+```
+
+- `getPermutationMap` 创建一个permutation的affinemap
+
+```cpp
+/// ArrrayRef<int64_t>
+static AffineMap getPermutationMap(ArrayRef<unsigned> permutation,
+                                  MLIRContext *context);
+```
+
+- `getMultiDimMapWithTargets`  创建一个指定输出行为的affinemap，没有计算，只是排序
+
+```cpp
+/// * getMultiDimMapWithTargets(3, [2, 1])
+///       -> affine_map<(d0, d1, d2) -> (d2, d1)>
+static AffineMap getMultiDimMapWithTargets(unsigned numDims, ArrayRef<unsigned> targets, MLIRContext *context);
+```
+
+- bool isEmpty() : Returns true if this affine map is an empty map, i.e., () -> ().
+
+- bool isSingleConstant() :  Returns true if this affine map is a single result constant function.
+
+- int64_t getSingleConstantResult()
+
+- bool isConstant() : Returns true if this affine map has only constant results.
+
+- SmallVector<int64_t> getConstantResults() : Returns the constant results of this map. This method asserts that the map has all constant results.
+
+- unsigned getNumDims()
+- unsigned getNumSymbols()
+- unsigned getNumResults()
+- unsigned getNumInputs()
+
+-  **ArrayRef<AffineExpr> getResults()** 返回每个result的计算affineExpr
+- AffineExpr getResult(unsigned idx)
+
+- getDimPosition : 返回result的pos(TODO:这个和输入的idx是什么关系？？)
+
+```
+unsigned AffineMap::getDimPosition(unsigned idx) const {
+  return cast<AffineDimExpr>(getResult(idx)).getPosition();
+}
+```
+
+- isFunctionOfDim
+/// Return true if any affine expression involves AffineDimExpr `position`.
+  bool isFunctionOfDim(unsigned position) const {
+    return llvm::any_of(getResults(), [&](AffineExpr e) {
+      return e.isFunctionOfDim(position);
+    });
+  }
+
+### MutableAffineMap
+
+- 可以set一些属性，比如
+ `void setResult(unsigned idx, AffineExpr result) { results[idx] = result; }`
+
+- simplify()
+
+使用 `analysis` 简化affinemap，大体是折叠常量相关的计算
+
+
+### AffineExpr
+
+```bash
+mlir/include/mlir/IR/AffineExpr.h
+mlir/lib/IR/AffineExpr.cpp
+```
+
+-  AffineExprKind getKind() ： 返回kind
+
+```cpp
+  Add,
+  /// RHS of mul is always a constant or a symbolic expression.
+  Mul,
+  /// RHS of mod is always a constant or a symbolic expression with a positive
+  /// value.
+  Mod,
+  /// RHS of floordiv is always a constant or a symbolic expression.
+  FloorDiv,
+  /// RHS of ceildiv is always a constant or a symbolic expression.
+  CeilDiv,
+
+  /// This is a marker for the last affine binary op. The range of binary
+  /// op's is expected to be this element and earlier.
+  LAST_AFFINE_BINARY_OP = CeilDiv,
+
+  /// Constant integer.
+  Constant,
+  /// Dimensional identifier.
+  DimId,
+  /// Symbolic identifier.
+  SymbolId,
+```
+
+- AffineBinaryOpExpr 继承自 AffineExpr
+  - AffineExpr getLHS()
+  - AffineExpr getRHS()
+
+- AffineDimExpr
+  - unsigned getPosition()
+
+- AffineConstantExpr
+  - int64_t getValue()
+
+例:
+affine_map (d1, d2) -> (d1 - d2)
+这是一个 AffineBinaryOpExpr，kind是add，表达为(1 * d1, -1 * d2)。lhs和rhs都是 AffineConstantExpr，value分别是(1, -1)
+
+
+``` cpp
+/// Return "true" if `candidate` is a negated expression, i.e., Mul(-1, expr).
+/// If so, also return the non-negated expression via `expr`.
+static bool isNegatedAffineExpr(AffineExpr candidate, AffineExpr &expr) {
+  auto mulExpr = dyn_cast<AffineBinaryOpExpr>(candidate);
+  if (!mulExpr || mulExpr.getKind() != AffineExprKind::Mul)
+    return false;
+  if (auto lhs = dyn_cast<AffineConstantExpr>(mulExpr.getLHS())) {
+    if (lhs.getValue() == -1) {
+      expr = mulExpr.getRHS();
+      return true;
+    }
+  }
+  if (auto rhs = dyn_cast<AffineConstantExpr>(mulExpr.getRHS())) {
+    if (rhs.getValue() == -1) {
+      expr = mulExpr.getLHS();
+      return true;
+    }
+  }
+  return false;
+}
+```
+
+## linalg
+
+### op
 
 - linalg.generic
 - linalg.fill
@@ -71,7 +232,7 @@ struct MatmulOpInterface : public AggregatedOpInterface::ExternalModel<
 - linalg.matmul
 - linalg.batch_matmul
 
-#### function
+### function
 
 - LinalgInterface
   - bool hasDynamicShape()
@@ -88,7 +249,7 @@ struct MatmulOpInterface : public AggregatedOpInterface::ExternalModel<
     };
     ```
 
-#### LinalgInterface
+### LinalgInterface
 
 ```bash
 mlir/lib/Dialect/Linalg/IR/LinalgInterfaces.cpp
@@ -147,17 +308,17 @@ static void getGenericEffectsImpl(
 
 ```
 
-#### conversion
+### conversion
 
 强烈推荐项目 [triton-linalg](https://github.com/Cambricon/triton-linalg)
 
-### scf
+## scf
 
 ```cpp
 mlir/lib/Dialect/SCF/IR/SCF.cpp
 ```
 
-#### op
+### op
 
 - scf.for
 - scf.forall / scf.parallel ： 循环body的程序是可以的并发执行，没有前后依赖的
@@ -258,15 +419,15 @@ mlir/lib/Dialect/SCF/IR/SCF.cpp
 	```
 
 
-### tensor
+## tensor
 
 ```cpp
 mlir/Dialect/Tensor/IR/Tensor.h
 ```
 
-#### op
+### op
 
-- tensor.empty
+- `tensor.empty`
 
 ```cpp
 auto srcShape = srcType.getShape();
@@ -275,11 +436,11 @@ Value input = rewriter.create<tensor::EmptyOp>(loc, newShapes, srcType.getElemen
 // RankedTenorType newType = RankedTensorType::get({srcDims[0], 1}), srcType.getElementType)
 ```
 
-- tensor.extract_slice [$offsets] [$sizes] [$strides]
+- `tensor.extract_slice [$offsets] [$sizes] [$strides]`
     - getSource()
     - getResult()
     - getType() → getResult().getType()
-- tensor.collapse_shape
+- `tensor.collapse_shape`
 
 ```cpp
 SmallVector<int64_t> srcDims;
@@ -287,7 +448,7 @@ RankedTensorType collapseType = RankedTensorType::get(srcDims, srcType.getElemen
 rewriter.create<tensor::CollapseShapeOp>(loc, collapseType, collapseIn, collapseIndices); // type, value, ArrayRef<ReassociationIndices>
 ```
 
-- tensor.expend_shape
+- `tensor.expend_shape`
 
 ```cpp
 RankedTensorType inputType = RankedTensorType::get({1, srcDims[0], 1, srcDims[1]}, srcType.getElementType());
@@ -297,8 +458,139 @@ Value opInput = rewriter.create<tensor::ExpandShapeOp>(loc, inputType, collapseO
 
 应用上可以使用tensor.collapse_shape和tensor.expand_shape消除operands中dimSize=1的维（往往这些维度不会影响数据的layout），创建降维后的op时候需要为某些op set额外的属性，例如linalg.transpose的permutation、linalg.reduce和linalg.broadcast的dimensions
 
-### memref
+## memref
 
-- memref.view
-    - getMixedOffsets / getMixedSizes / getMixedStrides → SmallVector<OpFoldResult>
+%a = memref.view/subview %b：a相当于是b的别名，二者具有相同的baseptr，指向同一块内存，修改b/a时，也会影响a/b。
 
+> getMixedOffsets / getMixedSizes / getMixedStrides → SmallVector<OpFoldResult>
+
+memref addr的分配：MemRef的内存分配是由MLIR运行时系统负责的，它会根据MemRef的大小和数据类型在内存中分配一段连续的内存空间，并将其地址存储在MemRef的指针中。
+
+```cpp
+getStridesAndOffset(MemRefType t, SmallVectorImpl<int64_t> &strides, int64_t &offset);
+```
+
+### memrefType
+
+layout, offset, stride, memrefspace
+
+- getElementType() → Type
+- getShape() → ArrayRef<int64_t>
+- getLayout() → MemRefLayoutAttrInterface
+
+```cpp
+auto strided = dyn_cast<MemRefLayoutAttrInterface>(t.getLayout());
+ArrayRef<int64_t> strides = strided.getStrides();
+int64_t offset = strides.getOffset();
+```
+
+- getMemorySpace() → Attribute
+
+### offset / stride / size
+
+#### 自定义dialect支持OffsetOp和StrideOp
+
+类似：[[mlir][memref] Introduce memref.offset and memref.stride ops](https://reviews.llvm.org/D130849)
+
+#### getStridesAndOffset
+```cpp
+// mlir/lib/IR/BuiltinTypes.cpp
+LogicalResult mlir::getStridesAndOffset(MemRefType t,
+                                        SmallVectorImpl<int64_t> &strides,
+                                        int64_t &offset) {
+  if (auto strided = llvm::dyn_cast<StridedLayoutAttr>(t.getLayout())) {
+    llvm::append_range(strides, strided.getStrides());
+    offset = strides.getOffset();
+    return success();
+  }
+  AffineExpr offsetExpr;
+  SmallVector<AffineExpr, 4> strideExprs;
+  if (failed(::getStridesAndOffset(t, strideExprs, offsetExpr)))
+    return failure();
+  if (auto cst = dyn_cast<AffineConstantExpr>(offsetExpr))
+    offset = cst.getValue();
+  else
+    offset = cst.getValue();
+  for (auto e : strideExprs) {
+    if (auto c = dyn_cast<AffineConsantExpr>(e))
+      strides.push_back(c.getValue());
+    else
+      strides.push_back(c.getValue());
+  }
+  return success();
+}
+```
+
+#### MemRefDescriptor
+
+```cpp
+#include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
+```
+
+```cpp
+MemRefDescriptor memrefDesc(csrc);
+Value offsetval = memrefDesc.offset(builder, loc);
+// stride(OpBuilder &builder, Location loc, unsigned pos);
+Value strideVal = memrefDesc.stride(builder, loc, 0);
+```
+
+#### Range
+
+```cpp
+struct Range {
+  OpFoldResult offset;
+  OpFoldResult size;
+  OpFoldResult stride;
+};
+```
+
+Range数据结构一般使用以下方法获得
+```cpp
+auto tileInfo = cast<TilingInterface>(op);
+SmallVector<Range> domain = op.getInterationDomain(rewriter);
+```
+
+由于是 `OpFoldResult` 类型，访问时使用`getValueOrCreateConstantIndexOp`方法
+
+取size的时候也经常先cast为Attribute
+```cpp
+if (inAttr = range.size.dyn_cast<Attribute>()) {
+  tileSize =inAttr.cast<IntegerAttr>().getInt();
+}
+```
+
+示例：
+
+```cpp
+// mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp
+FailureOr<SmallVector<scf::ForOp>>
+mlir::scf::lowerToLoopsUsingSCFForOp(RewriterBase &rewriter,
+                                     TilingInterface op) {
+  if (op->getNumResults() > 0) {
+    return rewriter.notifyMatchFailure(
+        op, "unable to lower to loops operations with return values");
+  }
+
+  SmallVector<Range> domain = op.getIterationDomain(rewriter);
+  SmallVector<Value> ivs;
+  SmallVector<scf::ForOp> loops;
+  Location loc = op.getLoc();
+  for (auto loopRange : domain) {
+    Value offsetVal =
+        getValueOrCreateConstantIndexOp(rewriter, loc, loopRange.offset);
+    Value sizeVal =
+        getValueOrCreateConstantIndexOp(rewriter, loc, loopRange.size);
+    Value strideVal =
+        getValueOrCreateConstantIndexOp(rewriter, loc, loopRange.stride);
+    auto loop = rewriter.create<scf::ForOp>(op.getLoc(), offsetVal, sizeVal,
+                                            strideVal, ValueRange{});
+    loops.push_back(loop);
+    ivs.push_back(loop.getInductionVar());
+    rewriter.setInsertionPoint(loop.getBody()->getTerminator());
+  }
+  if (failed(op.generateScalarImplementation(rewriter, op.getLoc(), ivs))) {
+    return failure();
+  }
+  return loops;
+}
+```

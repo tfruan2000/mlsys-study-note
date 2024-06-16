@@ -224,11 +224,21 @@ OpBuilder 继承自 Builder 类，**额外提供了struct Listener和class Inser
 Listener *getListener() const { return listener; }
 void clearInsertionPoint();
 InsertPoint saveInsertionPoint();
+
+// insertionPoint设在block内的iterator处
 void setInsertionPoint(Block *block, Block::iterator insertPoint);
-void setInsertionPoint(Operation *op);
-void setInsertionPointAfter(Operation *op) {
+
+// insertionPoint设到op前面，本质上还是找到op在block内的iterator
+void setInsertionPoint(Operation *op) {
   setInsertPointPoint(op->getBlock(), Block::iterator(op));
 }
+
+// insertionPoint设到op后面
+void setInsertionPointAfter(Operation *op) {
+  setInsertPointPoint(op->getBlock(), ++Block::iterator(op));
+}
+
+// insertionPoint设到value后面
 void setInsertionPointAfterValue(Value val) {
   if (Opeartion *op = val.getDefiningOp()) {
     setInsertionPointAfter(op);
@@ -237,7 +247,11 @@ void setInsertionPointAfterValue(Value val) {
     setInsertionPointToStart(blockArg.getOwner());
   }
 }
+
+// insertionPoint设到block开头
 void setInsertionPointToStart(Block *block);
+
+// insertionPoint设到block结尾
 void setInsertionPointToEnd(Block *block);
 ```
 
@@ -1951,143 +1965,6 @@ auto opFoldIsConstantValue = [](OpFoldResult ofr, int64_t value) {
 };
 ```
 
----
-
-## memref
-
-%a = memref.view/subview %b：a相当于是b的别名，二者具有相同的baseptr，指向同一块内存，修改b/a时，也会影响a/b。
-
-memref addr的分配：MemRef的内存分配是由MLIR运行时系统负责的，它会根据MemRef的大小和数据类型在内存中分配一段连续的内存空间，并将其地址存储在MemRef的指针中。
-
-```cpp
-getStridesAndOffset(MemRefType t, SmallVectorImpl<int64_t> &strides, int64_t &offset);
-```
-
-### memrefType
-
-layout, offset, stride, memrefspace
-
-- getElementType() → Type
-- getShape() → ArrayRef<int64_t>
-- getLayout() → MemRefLayoutAttrInterface
-
-```cpp
-auto strided = dyn_cast<MemRefLayoutAttrInterface>(t.getLayout());
-ArrayRef<int64_t> strides = strided.getStrides();
-int64_t offset = strides.getOffset();
-```
-
-- getMemorySpace() → Attribute
-
-### offset / stride / size
-
-#### 自定义dialect支持OffsetOp和StrideOp
-
-类似：[[mlir][memref] Introduce memref.offset and memref.stride ops](https://reviews.llvm.org/D130849)
-
-#### getStridesAndOffset
-```cpp
-// mlir/lib/IR/BuiltinTypes.cpp
-LogicalResult mlir::getStridesAndOffset(MemRefType t,
-                                        SmallVectorImpl<int64_t> &strides,
-                                        int64_t &offset) {
-  if (auto strided = llvm::dyn_cast<StridedLayoutAttr>(t.getLayout())) {
-    llvm::append_range(strides, strided.getStrides());
-    offset = strides.getOffset();
-    return success();
-  }
-  AffineExpr offsetExpr;
-  SmallVector<AffineExpr, 4> strideExprs;
-  if (failed(::getStridesAndOffset(t, strideExprs, offsetExpr)))
-    return failure();
-  if (auto cst = dyn_cast<AffineConstantExpr>(offsetExpr))
-    offset = cst.getValue();
-  else
-    offset = cst.getValue();
-  for (auto e : strideExprs) {
-    if (auto c = dyn_cast<AffineConsantExpr>(e))
-      strides.push_back(c.getValue());
-    else
-      strides.push_back(c.getValue());
-  }
-  return success();
-}
-```
-
-#### MemRefDescriptor
-
-```cpp
-#include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
-```
-
-```cpp
-MemRefDescriptor memrefDesc(csrc);
-Value offsetval = memrefDesc.offset(builder, loc);
-// stride(OpBuilder &builder, Location loc, unsigned pos);
-Value strideVal = memrefDesc.stride(builder, loc, 0);
-```
-
-#### Range
-
-```cpp
-struct Range {
-  OpFoldResult offset;
-  OpFoldResult size;
-  OpFoldResult stride;
-};
-```
-
-Range数据结构一般使用以下方法获得
-```cpp
-auto tileInfo = cast<TilingInterface>(op);
-SmallVector<Range> domain = op.getInterationDomain(rewriter);
-```
-
-由于是 `OpFoldResult` 类型，访问时使用`getValueOrCreateConstantIndexOp`方法
-
-取size的时候也经常先cast为Attribute
-```cpp
-if (inAttr = range.size.dyn_cast<Attribute>()) {
-  tileSize =inAttr.cast<IntegerAttr>().getInt();
-}
-```
-
-示例：
-
-```cpp
-// mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp
-FailureOr<SmallVector<scf::ForOp>>
-mlir::scf::lowerToLoopsUsingSCFForOp(RewriterBase &rewriter,
-                                     TilingInterface op) {
-  if (op->getNumResults() > 0) {
-    return rewriter.notifyMatchFailure(
-        op, "unable to lower to loops operations with return values");
-  }
-
-  SmallVector<Range> domain = op.getIterationDomain(rewriter);
-  SmallVector<Value> ivs;
-  SmallVector<scf::ForOp> loops;
-  Location loc = op.getLoc();
-  for (auto loopRange : domain) {
-    Value offsetVal =
-        getValueOrCreateConstantIndexOp(rewriter, loc, loopRange.offset);
-    Value sizeVal =
-        getValueOrCreateConstantIndexOp(rewriter, loc, loopRange.size);
-    Value strideVal =
-        getValueOrCreateConstantIndexOp(rewriter, loc, loopRange.stride);
-    auto loop = rewriter.create<scf::ForOp>(op.getLoc(), offsetVal, sizeVal,
-                                            strideVal, ValueRange{});
-    loops.push_back(loop);
-    ivs.push_back(loop.getInductionVar());
-    rewriter.setInsertionPoint(loop.getBody()->getTerminator());
-  }
-  if (failed(op.generateScalarImplementation(rewriter, op.getLoc(), ivs))) {
-    return failure();
-  }
-  return loops;
-}
-```
-
 
 ---
 
@@ -3577,6 +3454,7 @@ applyPermutationToVector(newShapes, permutation); // permutation是shape的新�
 
 ```cpp
 auto getReassociations = [&](const DenseSet<int64_t>& dimIndexSet) -> SmallVector<ReassociationIndices> {
+// `const SmallVector<int64_t>&` -> `ArrayRef<int64_t>`
 auto getNewPermutation = [](const SmallVector<int64_t>& relativeOrder) -> SmallVector<int64_t> {
 ```
 
@@ -3669,17 +3547,17 @@ rewriter.replaceOp(op, newOp->getResults());
 则输出 b={1, 3, 2, 0}
 
 ```cpp
-      auto getNewOrder = [](const SmallVector<int64_t> &relativeOrder)
-          -> SmallVector<int64_t> {
-        SmallVector<int64_t> sortOrder = relativeOrder;
-        llvm::sort(sortOrder);
-        SmallVector<int64_t> res;
-        llvm::transform(relativeOrder, std::back_inserter(res),
-                        [&](int64_t num) {
-                          return llvm::find(sortOrder, num) - sortOrder.begin();
-                        });
-        return res;
-      };
+auto getNewOrder = [](const SmallVector<int64_t> &relativeOrder)
+    -> SmallVector<int64_t> {
+  SmallVector<int64_t> sortOrder = relativeOrder;
+  llvm::sort(sortOrder);
+  SmallVector<int64_t> res;
+  llvm::transform(relativeOrder, std::back_inserter(res),
+                  [&](int64_t num) {
+                    return llvm::find(sortOrder, num) - sortOrder.begin();
+                  });
+  return res;
+};
 ```
 
 #### 定义一个driver来递归地处理func中符合条件的op
