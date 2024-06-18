@@ -2374,7 +2374,7 @@ Pattern TileParallelofConvOpUseRange with benefit(9) {
 ### 写一个 pass
 
 - Passes.td中定义pass的基本信息（描述、作用对象）
-  xxxx/xxx/Transforms/Passes.td  （xxxx一般为project名字，例如iree，一般也会定义相应的namespace `mlir::iree`）
+  include/xxx/Transforms/Passes.td  （xxxx一般为project名字，例如iree，一般也会定义相应的namespace `mlir::iree`）
 
     ```cpp
     def passNamePass : Pass<"pass-flag">, "该pass的作用对象" > { // 作用域可以为 func::FuncOp 或 mlir::ModuleOp
@@ -2407,7 +2407,7 @@ Pattern TileParallelofConvOpUseRange with benefit(9) {
       ];
 
 - passName.cpp中定义pass的实现
-  xxxx/xxx/Transforms/PassName.cpp
+  lib/xxx/Transforms/PassName.cpp
 
     ```cpp
     //===- passNamePass.cpp -----------------------------------------*- cpp -*-===//
@@ -3366,6 +3366,7 @@ Operation* / Value 这类都是比较重开销的数据结构，但如果是 S m
 - 传递一个不会被修改的SmallVector对象可以使用ArrayRef作为形参数
 
 ```cpp
+// const llvm::SmallVector<Ty> & -> ArrayRef<Ty>
 void func(const SmallVector<Operation *> &input);
 
 ->

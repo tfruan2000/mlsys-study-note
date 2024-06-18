@@ -82,7 +82,7 @@ static AffineMap getPermutationMap(ArrayRef<unsigned> permutation,
                                   MLIRContext *context);
 ```
 
-- `getMultiDimMapWithTargets`  创建一个指定输出行为的affinemap，没有计算，只是排序
+- `getMultiDimMapWithTargets`  创建一个指定输出行为的affinemap，没有计算，只是排序。输入的 `numDims` >= `targets.size()`
 
 ```cpp
 /// * getMultiDimMapWithTargets(3, [2, 1])
@@ -100,7 +100,7 @@ static AffineMap getMultiDimMapWithTargets(unsigned numDims, ArrayRef<unsigned> 
 
 - SmallVector<int64_t> getConstantResults() : Returns the constant results of this map. This method asserts that the map has all constant results.
 
-- unsigned getNumDims()
+- unsigned getNumDims() : AffineMap的numDims属性
 - unsigned getNumSymbols()
 - unsigned getNumResults()
 - unsigned getNumInputs()
@@ -108,21 +108,39 @@ static AffineMap getMultiDimMapWithTargets(unsigned numDims, ArrayRef<unsigned> 
 -  **ArrayRef<AffineExpr> getResults()** 返回每个result的计算affineExpr
 - AffineExpr getResult(unsigned idx)
 
-- getDimPosition : 返回result的pos(TODO:这个和输入的idx是什么关系？？)
+- getDimPosition : 返回result的pos，要求这个idx对应的result是一个 AffineDimExpr。
 
-```
+`AffineDimExpr`  意味着这个result不是计算出来的，一般是等于某个输入，例如affine_map<(d0, d1) -> (d1, d0)>，这个 AffineMap有两个输出，对其getDimPosition(0) = 1, getDimPosition(1) = 0。这个函数一般用在 `permutation` 的 AffineMap 上。
+
+```cpp
 unsigned AffineMap::getDimPosition(unsigned idx) const {
   return cast<AffineDimExpr>(getResult(idx)).getPosition();
 }
 ```
 
+- getResultPosition : 返回输入input是当前AffineMap的第几个输出
+```cpp
+std::optional<unsigned> AffineMap::getResultPosition(AffineExpr input) const {
+  if (!isa<AffineDimExpr>(input))
+    return std::nullopt;
+  for (unsigned i = 0, numResults = getNumResults(); i < numResults; i++) {
+    if (getResult(i) == input)
+      return i;
+  }
+  return std::nullopt;
+}
+```
+
 - isFunctionOfDim
+
+```cpp
 /// Return true if any affine expression involves AffineDimExpr `position`.
   bool isFunctionOfDim(unsigned position) const {
     return llvm::any_of(getResults(), [&](AffineExpr e) {
       return e.isFunctionOfDim(position);
     });
   }
+```
 
 ### MutableAffineMap
 
@@ -204,6 +222,8 @@ static bool isNegatedAffineExpr(AffineExpr candidate, AffineExpr &expr) {
   return false;
 }
 ```
+
+- getPosition()
 
 ## linalg
 
