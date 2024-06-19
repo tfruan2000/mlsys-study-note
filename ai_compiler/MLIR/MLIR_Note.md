@@ -996,6 +996,31 @@ LLVM_DEBUG(llvm::dbgs() << "Checking op: " << *op << "\n");
 
 ---
 
+## Dianostic
+
+```bash
+mlir/docs/Diagnostics.md
+mlir/include/mlir/IR/Diagnostics.h
+mlir/lib/IR/Diagnostics.cpp
+```
+
+当rewrite-pattern使用op的verify(rewrite出的op是否合法)来判断pattern是否match-and-rewrite成功时，那apply-pattern时的报错就是不必要的，可以通过去除handler的办法消除掉这些不必要的报错
+
+使用
+```cpp
+auto *context = &getContext();
+auto handlerID =
+    context->getDiagEngine().registerHandler([](Diagnostic &) { return; });
+...
+RewritePatternSet patterns(context);
+patterns.add<xxx>(patterns.getContext());
+(void)applyPatternAndFoldGreedily(getOperation(), std::move(patterns));
+...
+context->getDiagEngine().eraseHandler(handlerID);
+```
+
+---
+
 ## Dialect
 
 [[MLIR] Dialect](./composition/Dialect.md ':include')
@@ -1522,6 +1547,40 @@ loopLike.getTiedLoopInit(iterArg)->get() : %arg0
 - 函数内用 success() / failure() 作为返回
 - 外部调用判断 succeeded / failed
 
+```cpp
+static LogicalResult getXXX(Value &res, ...) {
+  if (xxx) {
+    value = newValue
+    return success();
+  }
+  return failure();
+}
+
+// 使用
+Value res = nullptr;
+LogicalResult a = getXXX(res, ...);
+if (failed(a)) {
+  DBGS() << "Get value failed.";
+}
+```
+
+但如果不想判断该函数是否 successed，或直接使用返回值(某些数据类型直接返回开销不大，没必要传入引用)，可以考虑使用 `FailureOr<Ty>`
+
+```cpp
+static FailureOr<Value> getXXX(...) {
+  if (xxx) {
+    return newValue;
+  }
+  return failure();
+}
+
+// 使用
+FailureOr a = getXXX(res, ...);
+if (failed(a))
+  DBGS() << "Get value failed.";
+Value res = *a
+```
+
 ### isa
 isa : 不能在cast之后使用isa，有类似场景请用dyn_cast
 isa_and_nonnull / isa_and_present：允许op为null作为输入，返回null
@@ -1984,16 +2043,69 @@ mlir/include/mlir/IR/Operation.h
 
 ## OpOperand
 
-每个Operation的Operand都是到Value的指针
+```bash
+mlir/include/mlir/IR/Value.h
+```
+
+每个Operation的Operand都是到Value的指针，这就意味着可以通过修改 OpOperand 来修改 Value。
 
 ```cpp
 OpOperand a;
-Value b = a->get()
+Value b = a->get();
+unsigned idx = a.getOperandNumber(); // 返回operation中改operand的idx，一般想要获得operand的idx也是通过其OpOperand
+Value value;
+a.assign(value);
 ```
 
 Operation都包含Results和Operands；Results中包含多个OpResult实例，Operands中包含多个OpOperand实例
 
 <div style="text-align: center;"><img src="./img_MLIR_Note/Untitled.png" alt="Untitled" style="width: 90%;"></div>
+
+- Operation * 的 getOpOperands() 将返回 `MutableArrayRef<OpOperand>`。相比 getOperands 获得的是 `OperandRange` ，一般不可修改，常常当 `ArrayRef<Value>` 来用。
+
+某些op中一般实现了 `getxxx` 和 `getxxxMutable` 两种方法来获得 operands
+
+```cpp
+// scf.forall 的 相关方法
+::mlir::Operation::operand_range getDynamicLowerBound();
+::mlir::Operation::operand_range getDynamicUpperBound();
+::mlir::Operation::operand_range getDynamicStep();
+::mlir::Operation::operand_range getOutputs();
+::mlir::MutableOperandRange getDynamicLowerBoundMutable();
+::mlir::MutableOperandRange getDynamicUpperBoundMutable();
+::mlir::MutableOperandRange getDynamicStepMutable();
+::mlir::MutableOperandRange getOutputsMutable();
+```
+
+还有许多op在 `mlir/include/mlir/Dialect/xxx/IR/xxxOps.h` 中定义有op的一些方法
+
+```cpp
+Value getTagMemRef() { return getOperand(0); }
+OpOperand &getTagMemRefMutable() { return getOperation()->getOpOperand(0); }
+```
+
+- Value 的 `getUses()` 方法返回的就是 `OpOperand`
+
+- replaceUsesWithIf常用的写法
+```cpp
+// 例如使用 to 替换 from 在 userBlock中的使用
+Value from, to;
+Block *userBlock;
+rewrite.replaceUsesWithIf(from, to, [&](Operation &use) {
+  return userBlock == use.getOwner()->getBlock();
+});
+```
+
+## OpResult
+
+```bash
+mlir/include/mlir/IR/Value.h
+```
+
+继承自 Value，基础的方法有
+
+- Operation *getOwner()
+- unsigned getResultNumber()
 
 ---
 
@@ -2777,7 +2889,43 @@ mlir/lib/Interfaces/SideEffectInterfaces.cpp
 3. **访问只读变量或常量：** 如果在代码中只读取只读变量或常量，而不对其进行修改，则这些操作也不会引起副作用。只读变量或常量的值在初始化后是不可更改的。
 4. **纯函数式编程操作：** 在纯函数式编程范式中，许多操作都是不可变的，因此它们通常不会引起副作用。这包括函数组合、映射、过滤等操作。
 
-常用方法，
+### EffectInstance
+
+`EffectInstance` 是描写 `MemoryEffects` 行为的对象，有四种
+- Allocate
+- Free : 对alloc resource的free行为
+- Read
+- Write
+
+例如判断某个op是否有read/write effect
+
+```cpp
+static bool hasReadOrWriteEffect(Operation *op) {
+  WalkResult ret = op->walk([&](Operation *innerOp) ->WalkResult {
+    if (auto interface = dyn_cast<MemoryEffectOpInterface>(innerOp)) {
+      if (interface.hasEffect<MemoryEffects::Read>() ||
+          interface.hasEffect<MemoryEffects::Write>())
+        return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return ret.wasInterrupted();
+}
+```
+
+`MemoryEffects::EffectInstance` 的常用方法
+
+- Value getValue(): 返回这个effect是apply到哪个value，当不知道是apply到谁时就返回 nullptr
+```cpp
+copy A -> B
+copy op 有 read 和 write，其中 read 的 apply value 是A(读A), write 的 apply value 是B(写B)
+```
+
+- EffectT *getEffect() 返回四种类型
+
+- int getStage() : 返回这个 effect的发生阶段，例如 `copy A -> B` 中 read 比 write 早
+
+### 常用方法
 
 - isPure(Operation *op)
 
@@ -2787,6 +2935,27 @@ mlir/lib/Interfaces/SideEffectInterfaces.cpp
 void mlir::MemoryEffectOpInterface::getEffects(::llvm::SmallVectorImpl<::mlir::SideEffects::EffectInstance<::mlir::MemoryEffects::Effect>> & effects) {
       return getImpl()->getEffects(getImpl(), getOperation(), effects);
   }
+```
+
+当然，更直接的是判断 `Operation *` 能否转为 `MemoryEffectOpInterface`，一般在 op 的 `td` 中标识该op是否可以有该interface
+
+```cpp
+class LinalgStructuredBase_Op<string mnemonic, list<Trait> props>
+  : Op<Linalg_Dialect, mnemonic, !listconcat([
+       SingleBlockImplicitTerminator<"YieldOp">,
+       DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+       DestinationStyleOpInterface,
+       LinalgStructuredInterface,
+...
+```
+
+使用上
+
+```cpp
+if (auto memEffect = llvm::dyn_cast<MemoryEffectInterface>(op)) {
+  SmallVector<MemoryEffects::EffectInstance> effects;
+  memEffect.getEffects(effects); // 这样effects中就会收集到op的MemoryEffects.
+}
 ```
 
 - isMemoryEffectFree(Operation *op)
@@ -3693,4 +3862,3 @@ namespace {
 	}
 } // namespace
 ```
-
