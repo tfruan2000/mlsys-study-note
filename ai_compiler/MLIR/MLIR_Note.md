@@ -201,6 +201,10 @@ op→getBlock()返回的是*Block
 
 Block内可以walk
 
+```cpp
+Operation &workOp : rootBlock->getOperations()
+```
+
 Block包含BlockArguement（使用getArguements()获得）和BlockOperand
 
 ---
@@ -1765,17 +1769,27 @@ mlir/lib/IR/Operation.cpp
         ```
 
 - getParentRegion 返回包含该op的region，也可以返回nullptr
+
 - getBlock() 返回父block，而不是当前op的block
+
 - getBody() 返回当前op内部的block或region
+
 - getOperands()
-    - 如果operand没有defineOp，则代表是BlockArguement
+  - 如果operand没有defineOp，则代表是BlockArguement
+
 - bool isBeforeInBlock(Operation *other) 判断这个op是否在other之前，要求当前op和other都在同一block内
+
 - getResults() / getResult(unsigned idx)
+
 - 转换为目标op
     - cast<AddOp>(op)
     - dyn_cast<AddOp>(op)
+
 - getUses() / getUsers()
 相当于这个operation的所有result的use / user（其实就是operation *）的集合
+
+- walk : 遍历 op 所有内部的 innerOp，第一次遍历的是本身
+
 - emitOpError
 
 ```cpp
@@ -3006,16 +3020,19 @@ Value 必然包含 Type，Type 也可以作为 Attribute 附加在 Operation 上
 
 - MemRefType
     - getLayout() -> MemRefLayoutAttrInterface
-    ```cpp
-     		SmallVector<Value, 4> dynamicOperands;
-        for (int i = 0; i < memrefType.getRank(); ++i) {
-          if (!memrefType.isDynamicDim(i))
-            continue;
-          Value dim = rewriter.createOrFold<memref::DimOp>(loc, op.getInput(), i);
-          dynamicOperands.push_back(dim);
-        }
-    ```
+      - isIdentity() : result type has no offset.
+    - 获得dim
+      ```cpp
+          SmallVector<Value, 4> dynamicOperands;
+          for (int i = 0; i < memrefType.getRank(); ++i) {
+            if (!memrefType.isDynamicDim(i))
+              continue;
+            Value dim = rewriter.createOrFold<memref::DimOp>(loc, op.getInput(), i);
+            dynamicOperands.push_back(dim);
+          }
+      ```
     - getStridesAndOffset(MemRefType t, SmallVectorImpl<int64_t> **&**strides, int64_t **&**offset)
+    - canonicalizeStridedLayout(MemRefType t) -> MemRefType : 标准化t的layout格式，如果能canonicalize成静态的就没问题，否则返回MemRefType的layout将是affineMap的形式
 
 例： bufferize时创建memref
 
@@ -3109,6 +3126,30 @@ use.getOwner() —> Operation*
 - replaceAllUseWith(Value newValue)
 - replaceAllUsesExcept(Value newValue, Operation *exceptedUser)
 
+## Visitor
+
+```bash
+mlir/include/mlir/IR/Visitors.h
+mlir/bin/IR/Visitors.cpp
+```
+
+用法
+
+```cpp
+Operation a;
+WalkResult ret = a.walk([&](Ty opOfTy) -> WalkResult {
+  ...
+});
+```
+
+- `Ty` : 一般为 `Operation *`, `Block *`, `Region *`, `FuncOpInterface`, 直接是opname (比如 memref.alloc)
+
+- `WalkResult` : Interrupt, Advance, Skip
+
+- `WalkOrder` : 可以设置 walk 的方向， `PreOrder` 或  `PostOrder`，不设置时默认 `PreOrder`
+
+- `wasInterrupted()` ,  `wasSkipped()` 判断 walk 的结果(返回值)
+
 ---
 
 ## clang code style
@@ -3131,8 +3172,6 @@ mlir的代码一般都得准守clang的format，简单的话可以使用 `git-cl
         ]
     },
 ```
-
-
 
 - 人为控制clang format开关
 

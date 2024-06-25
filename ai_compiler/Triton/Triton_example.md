@@ -176,6 +176,8 @@ def matmul(a, b, activation=""):
 
 ## batch matmul
 
+以下给的是Mn主序的BMM，mn主序的很容易照着改
+
 ```python
 @triton.autotune(
     configs=get_autotune_config(),
@@ -187,8 +189,8 @@ def bmm_kernel(
     A_ptr, B_ptr, C_ptr,
     # Matrix dimensions
     B, M, N, K,
-    stride_ab, stride_ak, stride_am,
-    stride_bb, stride_bn, stride_bk,
+    stride_ab, stride_am, stride_ak,
+    stride_bb, stride_bk, stride_bn,
     stride_cb, stride_cm, stride_cn,
     # Meta-parameters
     BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr,
@@ -206,21 +208,23 @@ def bmm_kernel(
     pid_m = first_pid_m + (pid % group_size_m)
     pid_n = (pid % num_pid_in_group) // group_size_m
 
-    offs_m = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
+    offs_m = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M // 防止越界
     offs_n = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
     offs_k = tl.arange(0, BLOCK_SIZE_K)
 
-    A_ptr = A_ptr + (offs_b * stride_ab + offs_k[:, None] * stride_ak + offs_m[None, :] * stride_am)
-    B_ptr = B_ptr + (offs_b * stride_bb + offs_n[:, None] * stride_bn + offs_k[None, :] * stride_bk)
+    A_ptr = A_ptr + (offs_b * stride_ab + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    B_ptr = B_ptr + (offs_b * stride_bb + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn)
 
     # -----------------------------------------------------------
     # Iterate to compute a block of the C matrix.
     # We accumulate into a `[BLOCK_SIZE_M, BLOCK_SIZE_N]` block
-    acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float16)
-    for k in range(0, K, BLOCK_SIZE_K):
-        a = tl.load(A_ptr, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
-        b = tl.load(B_ptr, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
-        acc += tl.dot(a.T, b.T, out_dtype=tl.float16)
+    acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+        a_mask = (offs_b < B) & (offs_k[None, :] < K - k * BLOCK_SIZE_K)
+        b_mask = (offs_b < B) & (offs_k[:, None] < K - k * BLOCK_SIZE_K)
+        a = tl.load(A_ptr, mask=a_mask, other=0.0)
+        b = tl.load(B_ptr, mask=b_mask, other=0.0)
+        acc += tl.dot(a, b, out_dtype=tl.float32)
         A_ptr += BLOCK_SIZE_K * stride_ak
         B_ptr += BLOCK_SIZE_K * stride_bk
 
@@ -239,10 +243,10 @@ def leaky_relu(x):
 def bmm(a, b, activation=""):
     # Check constraints.
     assert a.shape[0] == b.shape[0], "Incompatible dimensions"
-    assert a.shape[1] == b.shape[2], "Incompatible dimensions"
+    assert a.shape[2] == b.shape[1], "Incompatible dimensions"
     assert a.is_contiguous(), "Matrix A must be contiguous"
-    B, K, M = a.shape
-    B, N, K = b.shape
+    B, M, K = a.shape
+    B, K, M = b.shape
     c = torch.empty((B, M, N), device=a.device, dtype=torch.float16)
     # 2D launch kernel
     grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), B,)

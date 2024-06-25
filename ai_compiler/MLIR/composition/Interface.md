@@ -136,12 +136,6 @@ static DenseMap<Operation *, DenseSet<int>> computeBranchOpDetensoring(
 }
 ```
 
-## AllocOpInterface
-
-常见的alloc op都继承了该interface
-
-memref.alloc
-
 ## LoopLikeOpInterface
 
 在 `Ops.td` 中定义op时使用，例如
@@ -409,4 +403,29 @@ if (prevInsertOp.isSameAs(insertOp, isSame))
 ```cpp
     SmallVector<RegionSuccessor, 2> successors;
     branch.getSuccessorRegions(pred, successors);
+```
+
+## AllocOpInterface
+
+常见的alloc op都继承了该interface，常见 memref.alloc
+
+## FunctionOpInterface
+
+各种 func op都继承了该interface，常见 func.func
+
+常见于pass中的遍历处理，在 `.td` 中不设置其target，直接在 `runOnOperation()` 中锚定为 funcOp
+
+```cpp
+
+void processOnFunc(FunctionOpInterface func) {};
+
+namespace {
+struct ...
+  void runOnOperation() override {
+    Operation *input = getOperation();
+    input->walk([](FunctionOpInterface func) {
+      processOnFunc(func);
+    })
+  }
+}
 ```
