@@ -429,3 +429,13 @@ struct ...
   }
 }
 ```
+
+## CallOpInterface
+
+调用 function 的 op，例如
+
+```cpp
+// mlir/include/mlir/Dialect/SPIRV/IR/SPIRVControlFlowOps.td
+def SPIRV_FunctionCallOp : SPIRV_Op<"FunctionCall", [
+    InFunctionScope, DeclareOpInterfaceMethods<CallOpInterface>]> {
+```

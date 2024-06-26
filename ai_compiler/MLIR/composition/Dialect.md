@@ -330,7 +330,7 @@ static void getGenericEffectsImpl(
 
 ### conversion
 
-强烈推荐项目 [triton-linalg](https://github.com/Cambricon/triton-linalg)
+强烈推荐项目 [triton-linalg](https://github.com/Cambricon/triton-linalg)，大佬们的力作
 
 ## scf
 
@@ -451,8 +451,8 @@ mlir/Dialect/Tensor/IR/Tensor.h
 
 ```cpp
 auto srcShape = srcType.getShape();
-SmallVector<int64_t> newShapes(srcShape.begin(), srcShape.end())
-Value input = rewriter.create<tensor::EmptyOp>(loc, newShapes, srcType.getElementType());
+SmallVector<int64_t> sizes(srcShape.begin(), srcShape.end())
+Value input = rewriter.create<tensor::EmptyOp>(loc, sizes, srcType.getElementType());
 // RankedTenorType newType = RankedTensorType::get({srcDims[0], 1}), srcType.getElementType)
 ```
 
@@ -477,6 +477,43 @@ Value opInput = rewriter.create<tensor::ExpandShapeOp>(loc, inputType, collapseO
 ```
 
 应用上可以使用tensor.collapse_shape和tensor.expand_shape消除operands中dimSize=1的维（往往这些维度不会影响数据的layout），创建降维后的op时候需要为某些op set额外的属性，例如linalg.transpose的permutation、linalg.reduce和linalg.broadcast的dimensions
+
+- `tensor.parallel_insert_slice`
+
+创建 `scf.forall` 时，如果有 output，就需要使用 `tensor.parallel_insert_slice` 来返回
+
+```cpp
+// forallOp.getTerminator() 返回的是 scf.forall.in_parallel op
+rewriter.setInsertPointToTheEnd(forallOp.getTerminator().getBody);
+// 如果 forall 循环只进行一次(即 ub - lb = 1)，那么返回的行为就和 scf.forall 的 inductionVar 无关
+auto zero = rewriter.getIndexAttr(0);
+auto one = rewriter.getIndexAttr(1);
+
+// 记返回值为 returnVal，对应 forall 的第idx个输出
+Value returnVal;
+int64_t idx;
+auto rankTy = llvm::dyn_cast<RankedTensorType>(returnVal.getType());
+assert(rankTy && "expected returnVal has a RankedTensorType");
+
+SmallVector<OpFoldResult> sizes;
+for (const auto &shape : llvm::enumerate(rankTy.getShape())) {
+  if (ShapedType::isDynamic(shape.value())) {
+    sizes.emplace_back(rewriter.createOrFold<tensor::DimOp>(
+        loc, collapseRes, shape.index()));
+    continue;
+  }
+  sizes.emplace_back(rewriter.getIndexAttr(shape.value()));
+}
+SmallVector<OpFoldResult> offsets(rank, zero);
+SmallVector<OpFoldResult> strides(rank, one);
+rewriter.create<tensor::ParallelInsertSliceOp>(
+    loc,
+    /*source=*/resVal,
+    /*dest=*/forallOp.getOutputBlockArguments()[idx],
+    /*offsets=*/offsets,
+    /*sizes=*/sizes,
+    /*strides=*/strides);
+```
 
 ## memref
 
