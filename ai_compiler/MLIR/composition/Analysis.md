@@ -19,6 +19,31 @@ mlir/lib/Analysis/AliasAnalysis/LocalAliasAnalysis.h
 
 - AliasResult alias(Value lhs, Value rhs);
 
+```cpp
+// 确定一个op是否对一个value有读/写行为
+bool isOpReadOrWriteInplace(Operation *op, Value val) {
+  auto memInterface = llvm::dyn_cast<MemoryEffectOpInterface>(op);
+  if (!memInterface)
+    return false;
+  llvm::SmallVector<MemoryEffects::EffectInstance> effects;
+  memInterface.getEffects(effects);
+  bool readOnVal = false;
+  bool writeOnVal = false;
+  LocalAliasAnalysis analysis;
+  for (MemoryEffects::EffectInstance effect : effects) {
+    if (llvm::isa<MemoryEffects::Read>(effect.getEffect()) &&
+        !analysis.alias(val, effect.getValue()).isNo()) {
+        readOnVal = true;
+    }
+    if (llvm::isa<MemoryEffects::Read>(effect.getEffect() &&
+        !analysis.alias(val, effetc.getValue()).isNo()) {
+      writeOnVal = true;
+    }
+  }
+  return readOnVal || writeOnVal;
+}
+```
+
 - collectUnderlyingAddressValues
   - (Value, SmallVectorImpl<Value> &output)
   - (OpResult result, unsigned maxDepth, DenseSet<Value> &visited, SmallVectorImpl<Value> &output)
