@@ -1,6 +1,5 @@
 # Interface
 
-
 ## AttrInterface
 
 - ElementsAttrInterface
@@ -10,6 +9,30 @@
     - SparseElements
 - MemRefLayoutAttrInterface
 - TypeAttrInterface
+
+
+## DialectInlinerInterface
+
+(像 `inliner` 和 `canonicalize` 这样的函数，每个dialect都需要支持上， `inline` 有统一的实现可以继承，而 `canonicalize` 需要编写相关的fold函数即可)
+
+为自定义的Dialect继承该interface以实现inliner的操作，然后在额外重载一点函数就行，例如 `isLegalToInline`
+
+```cpp
+struct AffineInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+```
+
+在调inline这个pass时，遍历每个op的时候会使用 `getInterfaceFor`函数获得该op所属dialect重载的inline相关interface和函数
+
+```cpp
+bool InlinerInterface::isLegalToInline(Operation *op, Region *dest,
+                                       bool wouldBeCloned,
+                                       IRMapping &valueMapping) const {
+  if (auto *handler = getInterfaceFor(op))
+    return handler->isLegalToInline(op, dest, wouldBeCloned, valueMapping);
+  return false;
+}
+```
 
 ## DestinationStyleOpInterface
 linalOp都包含该interface
@@ -41,29 +64,6 @@ OpOperandVector getDpsInitOperands()
 `!llvm::isa<BaseMemRefType, TensorType>(opOperand->get().getType());`
 
 
-## DialectInlinerInterface
-
-(像 `inliner` 和 `canonicalize` 这样的函数，每个dialect都需要支持上， `inline` 有统一的实现可以继承，而 `canonicalize` 需要编写相关的fold函数即可)
-
-为自定义的Dialect继承该interface以实现inliner的操作，然后在额外重载一点函数就行，例如 `isLegalToInline`
-
-```cpp
-struct AffineInlinerInterface : public DialectInlinerInterface {
-  using DialectInlinerInterface::DialectInlinerInterface;
-```
-
-在调inline这个pass时，遍历每个op的时候会使用 `getInterfaceFor`函数获得该op所属dialect重载的inline相关interface和函数
-
-```cpp
-bool InlinerInterface::isLegalToInline(Operation *op, Region *dest,
-                                       bool wouldBeCloned,
-                                       IRMapping &valueMapping) const {
-  if (auto *handler = getInterfaceFor(op))
-    return handler->isLegalToInline(op, dest, wouldBeCloned, valueMapping);
-  return false;
-}
-```
-
 ## TilingInterface
 
 对于有该interface的op可以cast成该interface `llvm::cast<TilingInterface>(op)`
@@ -92,6 +92,138 @@ if (auto intAttr = range.size.dyn_cast<Attribute>()) {
 - getEffects
 - hasEffect
 - hasNoEffect
+
+### EffectInstance
+
+`EffectInstance` 是描写 `MemoryEffects` 行为的对象，有四种
+- Allocate
+- Free : 对alloc resource的free行为
+- Read
+- Write
+
+例如判断某个op是否有read/write effect
+
+```cpp
+static bool hasReadOrWriteEffect(Operation *op) {
+  WalkResult ret = op->walk([&](Operation *innerOp) ->WalkResult {
+    if (auto interface = dyn_cast<MemoryEffectOpInterface>(innerOp)) {
+      if (interface.hasEffect<MemoryEffects::Read>() ||
+          interface.hasEffect<MemoryEffects::Write>())
+        return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return ret.wasInterrupted();
+}
+```
+
+`MemoryEffects::EffectInstance` 的常用方法
+
+- Value getValue(): 返回这个effect是apply到哪个value，当不知道是apply到谁时就返回 nullptr
+```cpp
+copy A -> B
+copy op 有 read 和 write，其中 read 的 apply value 是A(读A), write 的 apply value 是B(写B)
+```
+
+- EffectT *getEffect() 返回四种类型
+
+- int getStage() : 返回这个 effect的发生阶段，值越小说明其发生更早。例如 `copy A -> B` 中 read 比 write 早，那么 `Read` effect 的 stage 就比 `Write` effect的 stage 小
+
+- bool getEffectOnFullRegion() : 返回该 side effect 是否作用于region内的每个value，一般是带 region 内有计算的op，比如 linalg.generic / linalg.map / linalg.reduce
+
+### 常用方法
+
+- isPure(Operation *op)
+
+- op.getEffect()
+一般传入一个 `SmallVector<SideEffects::EffectInstance<MemoryEffects::Effect>, 4>`
+```cpp
+void mlir::MemoryEffectOpInterface::getEffects(::llvm::SmallVectorImpl<::mlir::SideEffects::EffectInstance<::mlir::MemoryEffects::Effect>> & effects) {
+      return getImpl()->getEffects(getImpl(), getOperation(), effects);
+  }
+```
+
+当然，更直接的是判断 `Operation *` 能否转为 `MemoryEffectOpInterface`，一般在 op 的 `td` 中标识该op是否可以有该interface
+
+```cpp
+class LinalgStructuredBase_Op<string mnemonic, list<Trait> props>
+  : Op<Linalg_Dialect, mnemonic, !listconcat([
+       SingleBlockImplicitTerminator<"YieldOp">,
+       DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+       DestinationStyleOpInterface,
+       LinalgStructuredInterface,
+...
+```
+
+使用上
+
+```cpp
+if (auto memEffect = llvm::dyn_cast<MemoryEffectInterface>(op)) {
+  SmallVector<MemoryEffects::EffectInstance> effects;
+  memEffect.getEffects(effects); // 这样effects中就会收集到op的MemoryEffects.
+}
+```
+
+- isMemoryEffectFree(Operation *op)
+    - NoMemoryEffect
+    - HasRecursiveMemoryEffects 且 所有 nested ops 都是 MemoryEffectFree
+
+- hasEffect(Operation *op, Value value = nullptr) : 判断op是否对value有副作用，如果没提供value，则判断op是否有副作用
+```cpp
+template <typename... EffectTys>
+auto memOp = dyn_cast<MeoryEffectOpInterface>(op);
+if (!memOp)
+  return false;
+SmallVector<SideEffects::EffectInstance<MemoryEffects::Effect>, 4> effects;
+memOp.getEffects(effects);
+return llvm::any_of(effects, [&](MemoryEffects::Effect effect) {
+  if (value && effect.getValue() != value)
+    return false;
+  return isa<EffectTys...>(effect.getEffect());
+});
+```
+
+- onlyHasEffect
+例如判断只有read effect
+```cpp
+if (!isMemoryEffectFree(op)) {
+  auto memEffects = dyn_cast<MemoryEffectOpInterface>(op);
+  if (!memEffects || !memEffects.onlyHasEffect<MemoryEffects::Read>())
+    return failure();
+}
+```
+
+
+- isOpTriviallyDead(Operation *op) : 当op没有使用者且不会引起副作用时，op就是trivially dead
+```cpp
+bool mlir::isOpTriviallyDead(Operation *op) {
+  return op->use_empty() && wouldOpBeTriviallyDead(op);
+}
+```
+
+- getEffectsRecursively(Operation *rootOp) : 获得该root op和其nest op（一般指root op的region内的所有op）的memory Effect
+
+```cpp
+std::optional<llvm::SmallVector<MemoryEffects::EffectInstance>>
+mlir::getEffectsRecursively(Operation *rootOp)
+```
+
+- bool isSpeculatable(Operation* op)
+
+判断一个op是否是用于判断相关的语意，会先尝试判断op是否有 `ConditionallySpeculatable`的OpInterface
+
+然后会根据 `conditionallySpeculatable.getSpeculatability()` 来判断
+
+```cpp
+switch(conditionallySpeculatable.getSpeculatability()) {
+  case Speculation::RecursivelySpeculatable:
+    // 遍历op->getRegions()中的所有op，判断
+  case Speculation::Speculatable:
+    return true;
+  case Speculation::NotSpeculatable:
+    return false;
+}
+```
 
 ## BranchOpInterface
 
@@ -408,6 +540,10 @@ if (prevInsertOp.isSameAs(insertOp, isSame))
 ## AllocOpInterface
 
 常见的alloc op都继承了该interface，常见 memref.alloc
+
+常用
+- Value getSource()
+- Value getTarget()
 
 ## FunctionOpInterface
 

@@ -1,5 +1,73 @@
 # [MLIR]Analysis
 
+## dataflow framework
+
+```cpp
+mlir/include/mlir/Analysis/DataFlowFramework.h
+mlir/lib/Analysis/DataFlowFramework.cpp
+```
+
+### ChangeResult
+
+```cpp
+enum class [[nodiscard]] ChangeResult {
+  NoChange,
+  Change,
+};
+```
+
+> `[[nodiscard]]` 来标记函数的返回值不应该被忽略。也就是说，当调用一个被标记为 `[[nodiscard]]` 的函数时，
+> 如果返回值没有被使用，编译器会发出警告。
+
+### ProgramPoint
+
+ProgramPoint 是一个 `PointerUnion`，可以是 `Operation *, Value, Block *`
+
+### DataFlowSolver
+
+实现 child data-flow analyses，使用的是 fixed-point iteration 算法。
+一直维护 `AnalysisState` 和 `ProgramPoint` 信息。
+
+数据流分析的流程：
+
+(1) 加载并初始化 children analyses
+例如
+```cpp
+std::unique_ptr<mlir::DataFlowSolver> createDataFlowSolver() {
+  auto solver = std::make_unique<mlir::DataFlowSolver>();
+  solver->load<mlir::dataflow::DeadCodeAnalysis>();
+  solver->load<mlir::dataflow::SparseConstantPropagation>();
+  ...
+  return solver;
+}
+```
+
+(2) 配置并运行分析，直到达到设置的 fix-point
+
+```cpp
+if (failed(solver->initializeAndRun(root))) {
+  LLVM_DEBUG(llvm::dbgs() << " - XXX analysis failed.\n");
+  return failure();
+}
+```
+
+(3) 从 solver 中 query analysis state results
+
+```cpp
+// lookupState 可能返回 null
+const auto analysisState = solver->lookupState<xxxxx>(op)
+```
+
+## Liveness
+
+```bash
+mlir/include/mlir/Analysis/Liveness.h
+mlir/bin/Analysis/Liveness.cpp
+```
+
+对 op ->  Liveness(Operation *op)
+对 block -> liveness.getLiveness(block) -> LivenessBlockInfo
+
 ## AliasAnalysis
 
 ## LocalAliasAnalysis

@@ -211,7 +211,7 @@ Block包含BlockArguement（使用getArguements()获得）和BlockOperand
 
 ## Builder
 
-[Builder](./composition/Builder.md ':include')
+[[MLIR] Builder](./composition/Builder.md ':include')
 
 ---
 
@@ -529,45 +529,7 @@ use.getOwner() → Operation*
 
 ### dataflow framework
 
-```cpp
-mlir/include/mlir/Analysis/DataFlowFramework.h
-mlir/lib/Analysis/DataFlowFramework.cpp
-```
-
-- DataFlowSolver
-
-实现 child data-flow analyses，使用的是 fixed-point iteration 算法。一直维护 `AnalysisState` 和 `ProgramPoint` 信息。
-
-数据流分析的流程：
-
-(1) 加载并初始化 children analyses
-例如
-```cpp
-std::unique_ptr<mlir::DataFlowSolver> createDataFlowSolver() {
-  auto solver = std::make_unique<mlir::DataFlowSolver>();
-  solver->load<mlir::dataflow::DeadCodeAnalysis>();
-  solver->load<mlir::dataflow::SparseConstantPropagation>();
-  ...
-  return solver;
-}
-```
-
-(2) 配置并运行分析，直到达到设置的 fix-point
-
-(3) 从 solver 中 query analysis state results
-
-- AnalysisState
-
-- DataFlowAnalysis
-
-
-### dataflow analysis
-
-```cpp
-mlir/include/mlir/Analysis/DataFlow/SparseAnalysis.h
-mlir/lib/Analysis/DataFlow/SparseAnalysis.cpp
-```
-
+见 [[MLIR] Analysis](./composition/Analysis.md ':include') 中 dataflow framework 节
 
 ---
 
@@ -1790,6 +1752,12 @@ Pattern TileParallelofConvOpUseRange with benefit(9) {
       	"tensor::TensorDialect",
       ];
 
+- Passed.h 中声明pass
+  include/xxx/Transforms/Passes.h
+  ```cpp
+  std::unique_ptr<Pass> createPassNamePass();
+  ```
+
 - passName.cpp中定义pass的实现
   lib/xxx/Transforms/PassName.cpp
 
@@ -2193,145 +2161,13 @@ mlir/lib/Interfaces/SideEffectInterfaces.cpp
 3. **访问只读变量或常量：** 如果在代码中只读取只读变量或常量，而不对其进行修改，则这些操作也不会引起副作用。只读变量或常量的值在初始化后是不可更改的。
 4. **纯函数式编程操作：** 在纯函数式编程范式中，许多操作都是不可变的，因此它们通常不会引起副作用。这包括函数组合、映射、过滤等操作。
 
-### EffectInstance
-
-`EffectInstance` 是描写 `MemoryEffects` 行为的对象，有四种
-- Allocate
-- Free : 对alloc resource的free行为
-- Read
-- Write
-
-例如判断某个op是否有read/write effect
-
-```cpp
-static bool hasReadOrWriteEffect(Operation *op) {
-  WalkResult ret = op->walk([&](Operation *innerOp) ->WalkResult {
-    if (auto interface = dyn_cast<MemoryEffectOpInterface>(innerOp)) {
-      if (interface.hasEffect<MemoryEffects::Read>() ||
-          interface.hasEffect<MemoryEffects::Write>())
-        return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
-  });
-  return ret.wasInterrupted();
-}
-```
-
-`MemoryEffects::EffectInstance` 的常用方法
-
-- Value getValue(): 返回这个effect是apply到哪个value，当不知道是apply到谁时就返回 nullptr
-```cpp
-copy A -> B
-copy op 有 read 和 write，其中 read 的 apply value 是A(读A), write 的 apply value 是B(写B)
-```
-
-- EffectT *getEffect() 返回四种类型
-
-- int getStage() : 返回这个 effect的发生阶段，例如 `copy A -> B` 中 read 比 write 早，那么 `Read` effect 的 stage 就比 `Write` effect的 stage 小
-
-- bool getEffectOnFullRegion() : 返回该 side effect 是否作用于region内的每个value，一般是带 region 内有计算的op，比如 linalg.generic / linalg.map / linalg.reduce
-
-### 常用方法
-
-- isPure(Operation *op)
-
-- op.getEffect()
-一般传入一个 `SmallVector<SideEffects::EffectInstance<MemoryEffects::Effect>, 4>`
-```cpp
-void mlir::MemoryEffectOpInterface::getEffects(::llvm::SmallVectorImpl<::mlir::SideEffects::EffectInstance<::mlir::MemoryEffects::Effect>> & effects) {
-      return getImpl()->getEffects(getImpl(), getOperation(), effects);
-  }
-```
-
-当然，更直接的是判断 `Operation *` 能否转为 `MemoryEffectOpInterface`，一般在 op 的 `td` 中标识该op是否可以有该interface
-
-```cpp
-class LinalgStructuredBase_Op<string mnemonic, list<Trait> props>
-  : Op<Linalg_Dialect, mnemonic, !listconcat([
-       SingleBlockImplicitTerminator<"YieldOp">,
-       DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-       DestinationStyleOpInterface,
-       LinalgStructuredInterface,
-...
-```
-
-使用上
-
-```cpp
-if (auto memEffect = llvm::dyn_cast<MemoryEffectInterface>(op)) {
-  SmallVector<MemoryEffects::EffectInstance> effects;
-  memEffect.getEffects(effects); // 这样effects中就会收集到op的MemoryEffects.
-}
-```
-
-- isMemoryEffectFree(Operation *op)
-    - NoMemoryEffect
-    - HasRecursiveMemoryEffects 且 所有 nested ops 都是 MemoryEffectFree
-
-- hasEffect(Operation *op, Value value = nullptr) : 判断op是否对value有副作用，如果没提供value，则判断op是否有副作用
-```cpp
-template <typename... EffectTys>
-auto memOp = dyn_cast<MeoryEffectOpInterface>(op);
-if (!memOp)
-  return false;
-SmallVector<SideEffects::EffectInstance<MemoryEffects::Effect>, 4> effects;
-memOp.getEffects(effects);
-return llvm::any_of(effects, [&](MemoryEffects::Effect effect) {
-  if (value && effect.getValue() != value)
-    return false;
-  return isa<EffectTys...>(effect.getEffect());
-});
-```
-
-- onlyHasEffect
-例如判断只有read effect
-```cpp
-if (!isMemoryEffectFree(op)) {
-  auto memEffects = dyn_cast<MemoryEffectOpInterface>(op);
-  if (!memEffects || !memEffects.onlyHasEffect<MemoryEffects::Read>())
-    return failure();
-}
-```
-
-
-- isOpTriviallyDead(Operation *op) : 当op没有使用者且不会引起副作用时，op就是trivially dead
-```cpp
-bool mlir::isOpTriviallyDead(Operation *op) {
-  return op->use_empty() && wouldOpBeTriviallyDead(op);
-}
-```
-
-- getEffectsRecursively(Operation *rootOp) : 获得该root op和其nest op（一般指root op的region内的所有op）的memory Effect
-
-```cpp
-std::optional<llvm::SmallVector<MemoryEffects::EffectInstance>>
-mlir::getEffectsRecursively(Operation *rootOp)
-```
-
-- bool isSpeculatable(Operation* op)
-
-判断一个op是否是用于判断相关的语意，会先尝试判断op是否有 `ConditionallySpeculatable`的OpInterface
-
-然后会根据 `conditionallySpeculatable.getSpeculatability()` 来判断
-
-```cpp
-switch(conditionallySpeculatable.getSpeculatability()) {
-  case Speculation::RecursivelySpeculatable:
-    // 遍历op->getRegions()中的所有op，判断
-  case Speculation::Speculatable:
-    return true;
-  case Speculation::NotSpeculatable:
-    return false;
-}
-```
-
-
+[[MLIR] Interface](./composition/Interface.md ':include') 中具体查看 `MemoryEffectOpInterface` 相关用法
 
 ---
 
 ## TableGen
 
-基础语法 [llvm tablegen](../LLVM/TableGen.md)
+基础语法 [[LLVM] tablegen](../LLVM/TableGen.md ':include')
 
 ### 可变/可选参数
 
@@ -2486,8 +2322,6 @@ mlir/include/mlir/IR/OpDefinition.h
 
 用 `mightHaveTrait` 、 `hasTrait` 来判断
 
-1. OpDefine
-
 - SameTypeOperands : 所有operand type相同
 ```cpp
 class Arith_CompareOp<string mnemonic, list<Trait> traits = []> :
@@ -2526,13 +2360,24 @@ def LLVM_ConstantOp
   ...
 ```
 
-2. 在pass时用来判断
+- IsTerminator : 表示该op是一个block的最后一个操作(terminator operations)
+
+一般pass处理op时都要避免处理带有该 trait 的op
+
+```cpp
+if (op->hasTrait<OpTrait::IsTerminator>()) {
+  return;
+}
+```
 
 - IsIsolatedFromAbove ：表示该op不会读取或修改其父操作的任何值，有这个trait的op是不能被schedule的
 
-- IsTerminator : 表示该op是一个block的最后一个操作(terminator operations)
-
-
+找到op的符合条件的parentOp作为基点来计算liveness，带有该 trait 的op一般可以理解为是 `isolateOp`
+```cpp
+Liveness liveness(op->getParentWithTrait<OpTrait::IsIsolatedFromAbove>());
+Block *block = op->getBlock();
+const LivenessBlockInfo *blockInfo = liveness.getLiveness(block);
+```
 
 ---
 
@@ -2649,7 +2494,7 @@ ir中可能包含多个同名op，所以opIndexing来锁定handle
 
 Value 必然包含 Type，Type 也可以作为 Attribute 附加在 Operation 上
 
-常见类型：
+### 常见类型
 
 - ShapedType
     - ShapedType::kDynamic 用于判断某个数不是 `?`
@@ -2712,7 +2557,8 @@ if (bufferType.getLayout().isIdentity()) {
 }
 ```
 
-常用方法，src : type (value::getType())
+### 常用方法
+src -> type (Value::getType())
 
 - dyn_cast<MemRefType>() / dyn_cast<RankedTensorType>
 - ShapedType
@@ -2720,6 +2566,9 @@ if (bufferType.getLayout().isIdentity()) {
     - getRank
     - getShape: 当该type为ranked返回 ArrayRef<int64_t> ，否则assert
     - isDynamicDim / getNumDynamicDims / getDynamicDimIndex
+
+- mlir/include/mlir/IR/TypeUtilities.h 中的一些函数
+  - verifyCompatibleShape(Type lhs, Type rhs) : 比较两个Type的shape是否一致，不关心elemType
 
 ---
 
