@@ -1,7 +1,5 @@
 # mac 配置
 
-
-
 ## homebrew
 
 参考：https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/
@@ -18,7 +16,7 @@
 # 从本镜像下载安装脚本并安装 Homebrew / Linuxbrew
 git clone --depth=1 https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install.git brew-install
 /bin/bash brew-install/install.sh
-rm -rf brew-install
+rm -rf brew-install # 删掉多余的安装包
 
 # 也可从 GitHub 获取官方安装脚本安装 Homebrew / Linuxbrew
 /bin/bash -c "$(curl -fsSL https://github.com/Homebrew/install/raw/master/install.sh)"
@@ -74,7 +72,7 @@ git clone git://github.com/robbyrussell/oh-my-zsh.git ~/.oh-my-zsh
 修改主题，在 `~/.zshrc` 里的 设置`ZSH_THEME="ys"`
 
 安装插件
-常用autojump、zsh-autosuggestions、zsh-syntax-highlighting三个插件 
+常用autojump、zsh-autosuggestions、zsh-syntax-highlighting三个插件
 ```bash
 cd ~/.oh-my-zsh/plugins
 brew install autojump

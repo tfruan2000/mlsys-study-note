@@ -20,6 +20,7 @@ auto_activate_base: false
 
 ```bash
  conda create -n B --clone A       #克隆环境A来创建名为B的环境
+ conda create -n B  python=3.10
  conda activate xxxx               #开启xxxx环境
  conda deactivate                  #关闭环境
  conda info -e                    #显示所有的虚拟环境

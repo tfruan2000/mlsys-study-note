@@ -122,6 +122,9 @@ bool isOpReadOrWriteInplace(Operation *op, Value val) {
 ## SliceAnalysis
 
 用来遍历 use-def 链的 analysis
+一般可以将 use-def 理解为
+- def : 写
+- use : 读
 
 ```bash
 ///    ____
@@ -133,7 +136,7 @@ bool isOpReadOrWriteInplace(Operation *op, Value val) {
 ///   /____\
 ```
 
-- getForwardSlice : 获得root op的use链 (向后寻找)
+- getForwardSlice : 获得root op的use链 (向ir的结尾找)
 
 ```bash
 /// 从 0 开始追，可以获得 {9, 7, 8, 5, 1, 2, 6, 3, 4}
@@ -160,7 +163,7 @@ void getForwardSlice(Value root, SetVector<Operation *> *forwardSlice,
                      const ForwardSliceOptions &options = {});
 ```
 
-- getBackWardSlice : 获得root op的def链 (往前回溯)
+- getBackWardSlice : 获得root op的def链 (向ir的开头找)
 
 ```bash
 /// 从 node 8 开始， 可以获得 {1, 2, 5, 3, 4, 6}
