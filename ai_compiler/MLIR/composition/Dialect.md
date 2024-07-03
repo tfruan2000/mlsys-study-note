@@ -340,8 +340,18 @@ mlir/lib/Dialect/SCF/IR/SCF.cpp
 
 ### op
 
-- scf.for
-- scf.forall / scf.parallel ： 循环body的程序是可以的并发执行，没有前后依赖的
+- scf.for : 循环body必须串行执行，因为每次迭代返回值会写回blockarg，所以下一次使用 blockarg的值受上次迭代的影响
+  ```llvm
+  %alloc = memref.alloc() : memref<16xi32>
+  %1 = scf.for %arg0 = %c0_i32 to %c8_i32 step %c1_i32 iter_args(%arg1 = %alloc) -> (memref<16xi32>) {
+    %allco_new = memref.alloc() : memref<16xi32>
+    use %arg1
+    ...
+    scf.yield %alloc_new : memref<16xi32>
+  }
+  ```
+
+- scf.forall / scf.parallel ：**循环body的程序是可以的并发执行**，没有前后依赖的
   可以使用多线程的方式来执行，线程的id就是循环的迭代变量
   从scf到launch这种转换是可以通过代码自动完成的，需要的额外信息就是每一个循环的轴到launch的轴的映射关系
 
