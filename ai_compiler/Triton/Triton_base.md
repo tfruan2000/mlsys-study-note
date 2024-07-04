@@ -395,10 +395,34 @@ compiler在软件流水时使用。软件流水优化一般会在kernel中插入
 
 ### layout
 
-Layout：定义了Data是如何被Thread处理
+Layout：定义了Data是如何被Thread处理。这种layout attr在lowering过程中被传递，用于描述op的拆分映射关系
 
-- **Distributed Layout：**Blocked Layout, MMA Layout, DotOperand Layout都属于此类。这些Layout的特点都是映射函数会将特定的Tensor交给特定的Thread去处理，达到一个**distribution**的效果
-- **Shared Layout：**GPU中的Shared Memory是可以被一个Block内的任意线程访问的，映射函数被定义为任意Tensor->任意Thread
+- **Distributed Layout：**Blocked Layout, MMA Layout, DotOperand Layout都属于此类。这些Layout的特点都是映射函数会将特定的Tensor交给特定的Thread去处理(即一个layout描述整个tensor的访问模式)，达到一个**distribution**的效果
+```cpp
+class DistributedEncoding<string name> : TritonGPU_Attr<name> {
+  let description =[{
+    The layout function \mathcal{L} of this layout is then defined, for an
+    index `i` \in R^D, as follows:
+
+    \mathcal{L}(A)[i_d] = L[(i_d + k_d*A.shape[d]) % L.shape[d]] \forall k_d such as i_d + k_d*A.shape[d] < L.shape[d]
+
+    For example, for a tensor/layout pair
+    A = [x  x  x  x  x  x  x  x]
+        [x  x  x  x  x  x  x  x]
+    L = [0  1  2  3 ]
+        [4  5  6  7 ]
+        [8  9  10 11]
+        [12 13 14 15]
+
+    Then the data of A would be distributed as follow between the 16 CUDA threads:
+    // L(i, j) = {...} 用来描述数据 (i, j) 被哪些CUDA线程访问
+    L(A) = [ {0,8} , {1,9} , {2,10}, {3,11}, {0,8} , {1, 9} , {2, 10}, {3, 11},
+            {4,12}, {5,13}, {6,14}, {7,15}, {4,12}, {5, 13}, {6, 14}, {7, 15} ]
+    }];
+...
+}
+```
+- **Shared Layout：**GPU中的Shared Memory是可以被一个Block内的任意线程访问的，shared layout会被用来描述哪些元素会被线程同时访问，以此来减少bank confict映射函数被定义为任意Tensor->任意Thread。
 
 #### distributed layout
 
