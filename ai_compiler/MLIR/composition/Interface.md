@@ -155,6 +155,21 @@ class LinalgStructuredBase_Op<string mnemonic, list<Trait> props>
 ...
 ```
 
+以及，需要额外注意带有 `MemWriteAt<0, PartialEffect>`的 op，因为如果writeeffect是full，那么后一次写就能覆盖前一次，但如果是partial，就不能因为有后一次写而删除前一次写。
+
+```cpp
+def LoadOp : MemRef_Op<"load", [...] {
+  ...
+  // 这意味着是部分读，只读一部分数据
+  let arguments = (ins Arg<AnyMemRef, "the reference to load from",
+                           [MemReadAt<0, PartialEffect>]>:$memref,
+                       Variadic<Index>:$indices,
+                       DefaultValuedOptionalAttr<BoolAttr, "false">:$nontemporal);
+
+  ...
+}
+```
+
 使用上
 
 ```cpp

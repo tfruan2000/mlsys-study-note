@@ -1,6 +1,9 @@
 # Triton-Linalg
 
-doing
+这将是一篇长文（老太太牌裹脚布），大该有以下部分，但是都还在施工～
+
+知识深度有限，欢迎大家指正
+
 - [ ] 介绍（背景、优缺点、和triton-shared的区别）
 - [x] 环境配置 : clone & 编译
 - [ ] 测试使用（测试一些例子，简单介绍一下使用）
@@ -19,12 +22,51 @@ doing
 
 ### what's this
 
-[triton-linalg](https://github.com/Cambricon/triton-linalg)
+- linalg
+
+了解 `mlir` 的同学一定不陌生 `linalg`，简单来说这是一个胶水层，能表示很多信息，起承上启下的作用，这就意味着硬件厂商支持 `mlir`的主要工作在 `linalg` 往下。
+
+- triton
+
+很多大佬都介绍过了，都写得很好，例如：
+[bbuf大佬的笔记](https://mp.weixin.qq.com/s/RMR_n1n6nBqpdMl6tdd7pQ)，
+[董鑫​大佬关于如何入门的回答](https://www.zhihu.com/question/622685131/answer/3217107882)
+
+一搜一个不吱声，直接埋头开卷！
+
+简单来说，`triton` 可以让大家用更少的时间获得较为不错的性能，来验证自己的想法，深受现在学界的喜爱。当然工业界一些很好的 triton 工作了，例如 [lightllm](https://github.com/ModelTC/lightllm)中有很多用triton实现的kernel。
+
+
+- triton-linalg
+
+[triton-linalg](https://github.com/Cambricon/triton-linalg) 顾名思义，是**为triton(dialect)下降到linalg(dialect)提供了一条可行的路线**。如果大家看过 `triton` 的源码就会发现目前它的下降行为十分直接，一个猛子完成 `triton dialect->triton gpu dialect->llvm`(见[triton conversion](https://github.com/triton-lang/triton/tree/main/lib/Conversion))，在这些转换中分布着一些gpu硬件特有的trick来codegen出的ir性能不错。
+
+“但是，古尔丹，代价是什么呢” -> 于我而言，代价是需要很多硬件背景知识才能读懂为什么要那么做，以及只能用在 GPU 上，为NV帝国添砖瓦，什么时候才能把价钱打下来！-> 期待早日见到国产卡重回潮头
+
+![bqb1](./img_Triton_linalg/bqb1.jpg)
+
+开始“龙场悟道“（自闭）：
+
+那么有没有一种和硬件无关的层级表示 ir 能方便大家读懂且接入自己的硬件呢？
+->
+直接从 ttir(triton dialect ir) 接自己的 dialect(类似 TritonGPUDialect)?
+->
+那万一以后 `triton` 又不行了，出来一个其他的呢，又适配一遍么？
+->
+开摆！（x）看看业界领先经验（√）-> 跟紧 [mojo](https://github.com/modularml/mojo)拥抱 `mlir` 社区，而 `linalg` 作为 `mlir` 社区中很重要的一个中间层，可以考虑下。
 
 ### what can we do with this
 
+- triton 重要性： triton 从 pytorch2.0 后已正式作为 `inductor` 的 gpu 后端，也就是说用户写到的 python 代码会经过 `inductor` 得到 `triton language`，然后经过编译后再执行，实现性能提升。接入 triton = 接入 pytorch = 走上人生巅峰 = 给别人埋bug...
+
+> 感兴趣的同学可以了解下 [torch.compile](https://pytorch.org/docs/stable/torch.compiler.html)
+
 - 扩展性： linalg - to - HW special dialect
+（借用一下大佬的图，来源见水印）
+![triton_ext_pipeline](./img_Triton_linalg/mlir_pipeline.jpg)
+
 - 中间层级优化：trion目前GPU的下降路线过于生硬，可以说是直接一把 `conversion`，一把下降会导致难以优化中间 IR（例如离散性优化），这对 `SIMT` 虽然影响不大，但是离散地访存行为对 `SIMD` 的影响无疑是巨大的。
+以说是直接一把 `conversion`，一把下降会导致难以优化中间 IR（例如离散性优化），这对 `SIMT` 虽然影响不大，但是离散地访存行为对 `SIMD` 的影响无疑巨大
 
 ### triton-shared
 
@@ -32,7 +74,12 @@ doing
 
 ### diff with triton-shared
 
-## 配置环境
+- 下降行为不同
+例如，对于指针的处理 `triton-shared` 会将指针转成memef<*xf32>，而 `triton-linalg` 会转为 `llvm.inttoptr`。 `triton-linalg` 对指针的处理保持了和 `triton` (官方一致)[https://github.com/triton-lang/triton/blob/main/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp#L792]。当然不同的行为都是为了自己的流程中更方便。
+
+- balabalabal...
+
+## 环境配置
 
 - clone
 
@@ -192,11 +239,11 @@ def matmul_kernel(
 ```
 
 输出 ttir 时
-- 地址相关计算会下降到 arith.ops
+主要下降为 tt.ops + arith.ops，具体参考 `triton/python/triton/language/semantic.py`
 
 ```llvm
 module {
-  tt.func public @matmul_kernel(%arg0: !tt.ptr<f16>, %arg1: !tt.ptr<f16>, %arg2: !tt.ptr<f16>, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32, %arg8: i32) attributes {noinline = false} {
+  tt.func public @matmul_kernel(%arg0: !tt.ptr<f16>, %arg1: !tt.ptr<f16>, %arg2: !tt.ptr<f16>, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32, %arg8: i32) {
     // blockarg对应：（都是根据ir推出来的）
     // %arg0: a_ptr, %arg1: b_ptr, %arg2: c_ptr
     // %arg3: M, %arg4: N, %arg5: K
@@ -379,3 +426,162 @@ module {
   }
 }
 ```
+
+## 瞅瞅linalg
+
+继续下到linalg上，一眼 `tensor` + `linalg` + `bufferization`，以及两个该仓库自定义的dialect `aux` + `linalg_ext`（后节会讲讲）
+
+```llvm
+// triton-linalg-opt -triton-to-linalg matmul.ttir
+#map = affine_map<(d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)>
+module {
+  func.func @matmul_kernel(%arg0: i64, %arg1: i64, %arg2: i64, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32, %arg8: i32) {
+    %c128 = arith.constant 128 : index
+    %c0 = arith.constant 0 : index
+    %c64 = arith.constant 64 : index
+    %c0_i32 = arith.constant 0 : i32
+    %c1_i32 = arith.constant 1 : i32
+    %false = arith.constant false
+    %true = arith.constant true
+    %c8_i32 = arith.constant 8 : i32
+    %c128_i32 = arith.constant 128 : i32
+    %cst = arith.constant 0.000000e+00 : f32
+    %c64_i32 = arith.constant 64 : i32
+    %c127_i32 = arith.constant 127 : i32
+    %c63_i32 = arith.constant 63 : i32
+    %cst_0 = arith.constant 0.000000e+00 : f16
+    %0 = tensor.empty() : tensor<64x64xf16>
+    // arith.constant : tensor<128x64xf16> -> linalg.fill
+    %1 = linalg.fill ins(%cst_0 : f16) outs(%0 : tensor<64x64xf16>) -> tensor<64x64xf16>
+    %2 = tensor.empty() : tensor<128x64xi32>
+    %3 = linalg.fill ins(%c64_i32 : i32) outs(%2 : tensor<128x64xi32>) -> tensor<128x64xi32>
+    %4 = tensor.empty() : tensor<128x64xf32>
+    %5 = linalg.fill ins(%cst : f32) outs(%4 : tensor<128x64xf32>) -> tensor<128x64xf32>
+    // tt.get_program_id 在目前还没该变，可以考虑转为循环的上界
+    %6 = tt.get_program_id x : i32
+    %7 = arith.addi %arg3, %c127_i32 : i32
+    %8 = arith.divsi %7, %c128_i32 : i32
+    %9 = arith.addi %arg4, %c63_i32 : i32
+    %10 = arith.divsi %9, %c64_i32 : i32
+    %11 = arith.muli %10, %c8_i32 : i32
+    %12 = arith.divsi %6, %11 : i32
+    %13 = arith.muli %12, %c8_i32 : i32
+    %14 = arith.subi %8, %13 : i32
+    %15 = arith.minsi %14, %c8_i32 : i32
+    %16 = arith.remsi %6, %15 : i32
+    %17 = arith.addi %13, %16 : i32
+    %18 = arith.remsi %6, %11 : i32
+    %19 = arith.divsi %18, %15 : i32
+    %20 = arith.muli %17, %c128_i32 : i32
+    %21 = tensor.empty() : tensor<128xi32>
+    // tt.make_range -> linalg_ext.make_range
+    %22 = linalg_ext.make_range {operandSegmentSizes = array<i32: 2, 1>} ins(%c0_i32, %c128_i32 : i32, i32) outs(%21 : tensor<128xi32>) -> tensor<128xi32>
+    %23 = linalg.fill ins(%20 : i32) outs(%21 : tensor<128xi32>) -> tensor<128xi32>
+    %mapped = linalg.map { arith.addi } ins(%23, %22 : tensor<128xi32>, tensor<128xi32>) outs(%21 : tensor<128xi32>)
+    %24 = linalg.fill ins(%arg3 : i32) outs(%21 : tensor<128xi32>) -> tensor<128xi32>
+    %mapped_1 = linalg.map { arith.remsi } ins(%mapped, %24 : tensor<128xi32>, tensor<128xi32>) outs(%21 : tensor<128xi32>)
+    %25 = arith.muli %19, %c64_i32 : i32
+    %26 = tensor.empty() : tensor<64xi32>
+    %27 = linalg_ext.make_range {operandSegmentSizes = array<i32: 2, 1>} ins(%c0_i32, %c64_i32 : i32, i32) outs(%26 : tensor<64xi32>) -> tensor<64xi32>
+    %28 = linalg.fill ins(%25 : i32) outs(%26 : tensor<64xi32>) -> tensor<64xi32>
+    %mapped_2 = linalg.map { arith.addi } ins(%28, %27 : tensor<64xi32>, tensor<64xi32>) outs(%26 : tensor<64xi32>)
+    %29 = linalg.fill ins(%arg4 : i32) outs(%26 : tensor<64xi32>) -> tensor<64xi32>
+    %mapped_3 = linalg.map { arith.remsi } ins(%mapped_2, %29 : tensor<64xi32>, tensor<64xi32>) outs(%26 : tensor<64xi32>)
+    %expanded = tensor.expand_shape %mapped_1 [[0, 1]] : tensor<128xi32> into tensor<128x1xi32>
+    %30 = tensor.empty() : tensor<128x1xi32>
+    %31 = linalg.fill ins(%arg6 : i32) outs(%30 : tensor<128x1xi32>) -> tensor<128x1xi32>
+    %mapped_4 = linalg.map { arith.muli } ins(%expanded, %31 : tensor<128x1xi32>, tensor<128x1xi32>) outs(%30 : tensor<128x1xi32>)
+    %collapsed = tensor.collapse_shape %mapped_4 [[0, 1]] : tensor<128x1xi32> into tensor<128xi32>
+    %broadcasted = linalg.broadcast ins(%collapsed : tensor<128xi32>) outs(%2 : tensor<128x64xi32>) dimensions = [1]
+    %broadcasted_5 = linalg.broadcast ins(%27 : tensor<64xi32>) outs(%2 : tensor<128x64xi32>) dimensions = [0]
+    %mapped_6 = linalg.map { arith.addi } ins(%broadcasted, %broadcasted_5 : tensor<128x64xi32>, tensor<128x64xi32>) outs(%2 : tensor<128x64xi32>)
+    %expanded_7 = tensor.expand_shape %27 [[0, 1]] : tensor<64xi32> into tensor<64x1xi32>
+    %32 = tensor.empty() : tensor<64x1xi32>
+    %33 = linalg.fill ins(%arg7 : i32) outs(%32 : tensor<64x1xi32>) -> tensor<64x1xi32>
+    %mapped_8 = linalg.map { arith.muli } ins(%expanded_7, %33 : tensor<64x1xi32>, tensor<64x1xi32>) outs(%32 : tensor<64x1xi32>)
+    %collapsed_9 = tensor.collapse_shape %mapped_8 [[0, 1]] : tensor<64x1xi32> into tensor<64xi32>
+    %34 = tensor.empty() : tensor<64x64xi32>
+    %broadcasted_10 = linalg.broadcast ins(%collapsed_9 : tensor<64xi32>) outs(%34 : tensor<64x64xi32>) dimensions = [1]
+    %broadcasted_11 = linalg.broadcast ins(%mapped_3 : tensor<64xi32>) outs(%34 : tensor<64x64xi32>) dimensions = [0]
+    %mapped_12 = linalg.map { arith.addi } ins(%broadcasted_10, %broadcasted_11 : tensor<64x64xi32>, tensor<64x64xi32>) outs(%34 : tensor<64x64xi32>)
+    %35 = arith.addi %arg5, %c63_i32 : i32
+    %36 = arith.divsi %35, %c64_i32 : i32
+    %37 = arith.muli %arg7, %c64_i32 : i32
+    %38 = linalg.fill ins(%37 : i32) outs(%34 : tensor<64x64xi32>) -> tensor<64x64xi32>
+    %39 = llvm.inttoptr %arg0 : i64 to !llvm.ptr
+    %40 = tensor.empty() : tensor<128x64xf16>
+    %41 = tensor.empty() : tensor<64x1xi1>
+    %42 = tensor.empty() : tensor<64x64xi1>
+    // tt.addptr -> llvm.inttoptr
+    %43 = llvm.inttoptr %arg1 : i64 to !llvm.ptr
+    %44:3 = scf.for %arg9 = %c0_i32 to %36 step %c1_i32 iter_args(%arg10 = %5, %arg11 = %mapped_6, %arg12 = %mapped_12) -> (tensor<128x64xf32>, tensor<128x64xi32>, tensor<64x64xi32>)  : i32 {
+      %71 = arith.muli %arg9, %c64_i32 : i32
+      %72 = arith.subi %arg5, %71 : i32
+      %73 = arith.index_cast %72 : i32 to index
+      %74 = arith.maxsi %73, %c0 : index
+      %75 = arith.minsi %74, %c64 : index
+      %view_memref_14 = aux.view %39 to offset: [0], sizes: [9223372036854775807], strides: [1] : !llvm.ptr to memref<9223372036854775807xf16>
+      %extracted_slice_15 = tensor.extract_slice %arg11[0, 0] [128, 1] [1, 1] : tensor<128x64xi32> to tensor<128x1xi32>
+      %76 = linalg.fill ins(%c0_i32 : i32) outs(%30 : tensor<128x1xi32>) -> tensor<128x1xi32>
+      %mapped_16 = linalg.map { arith.addi } ins(%extracted_slice_15, %76 : tensor<128x1xi32>, tensor<128x1xi32>) outs(%30 : tensor<128x1xi32>)
+      %77 = bufferization.to_tensor %view_memref_14 restrict writable : memref<9223372036854775807xf16>
+      %78 = tensor.empty(%75) : tensor<128x?xf16>
+      // 带mask的访存行为
+      %79 = linalg_ext.gather dimension_map = [0] ranged_data(false) signed_indice(false) ins(%77, %mapped_16 : tensor<9223372036854775807xf16>, tensor<128x1xi32>) outs(%78 : tensor<128x?xf16>) {
+      ^bb0(%arg13: f16, %arg14: f16):
+        linalg_ext.yield %arg13 : f16
+      } -> tensor<128x?xf16>
+      %80 = arith.subi %c64, %75 : index
+      %81 = linalg_ext.pad ins(%79 : tensor<128x?xf16>) outs(%40 : tensor<128x64xf16>) pvalue(%cst_0 : f16) low = [0, 0] high = [0, %80] {
+      ^bb0(%arg13: f16):
+        linalg_ext.yield %arg13 : f16
+      } -> tensor<128x64xf16>
+      %82 = tensor.empty(%75) : tensor<?x1xi1>
+      %83 = linalg.fill ins(%true : i1) outs(%82 : tensor<?x1xi1>) -> tensor<?x1xi1>
+      // pad为static方便处理
+      %84 = linalg_ext.pad ins(%83 : tensor<?x1xi1>) outs(%41 : tensor<64x1xi1>) pvalue(%false : i1) low = [0, 0] high = [%80, 0] {
+      ^bb0(%arg13: i1):
+        linalg_ext.yield %arg13 : i1
+      } -> tensor<64x1xi1>
+      %collapsed_17 = tensor.collapse_shape %84 [[0, 1]] : tensor<64x1xi1> into tensor<64xi1>
+      %broadcasted_18 = linalg.broadcast ins(%collapsed_17 : tensor<64xi1>) outs(%42 : tensor<64x64xi1>) dimensions = [1]
+      %85 = linalg.fill ins(%c0_i32 : i32) outs(%34 : tensor<64x64xi32>) -> tensor<64x64xi32>
+      %mapped_19 = linalg.map { arith.addi } ins(%arg12, %85 : tensor<64x64xi32>, tensor<64x64xi32>) outs(%34 : tensor<64x64xi32>)
+      %view_memref_20 = aux.view %43 to offset: [0], sizes: [9223372036854775807], strides: [1] : !llvm.ptr to memref<9223372036854775807xf16>
+      %extracted_slice_21 = tensor.extract_slice %mapped_19[0, 0] [%75, 64] [1, 1] : tensor<64x64xi32> to tensor<?x64xi32>
+      %expanded_22 = tensor.expand_shape %extracted_slice_21 [[0], [1, 2]] : tensor<?x64xi32> into tensor<?x64x1xi32>
+      %extracted_slice_23 = tensor.extract_slice %broadcasted_18[0, 0] [%75, 64] [1, 1] : tensor<64x64xi1> to tensor<?x64xi1>
+      %86 = bufferization.to_tensor %view_memref_20 restrict writable : memref<9223372036854775807xf16>
+      %87 = tensor.empty(%75) : tensor<?x64xf16>
+      %expanded_24 = tensor.expand_shape %87 [[0], [1, 2]] : tensor<?x64xf16> into tensor<?x64x1xf16>
+      %88 = linalg_ext.gather dimension_map = [0] ranged_data(false) signed_indice(false) ins(%86, %expanded_22, %extracted_slice_23 : tensor<9223372036854775807xf16>, tensor<?x64x1xi32>, tensor<?x64xi1>) outs(%expanded_24 : tensor<?x64x1xf16>) {
+      ^bb0(%arg13: f16, %arg14: f16):
+        linalg_ext.yield %arg13 : f16
+      } -> tensor<?x64x1xf16>
+      %collapsed_25 = tensor.collapse_shape %88 [[0], [1, 2]] : tensor<?x64x1xf16> into tensor<?x64xf16>
+      %89 = linalg_ext.pad ins(%collapsed_25 : tensor<?x64xf16>) outs(%0 : tensor<64x64xf16>) pvalue(%cst_0 : f16) low = [0, 0] high = [%80, 0] {
+      ^bb0(%arg13: f16):
+        linalg_ext.yield %arg13 : f16
+      } -> tensor<64x64xf16>
+      %mapped_26 = linalg.map { arith.select } ins(%broadcasted_18, %89, %1 : tensor<64x64xi1>, tensor<64x64xf16>, tensor<64x64xf16>) outs(%0 : tensor<64x64xf16>)
+      // tt.dot -> linalg.matmul
+      %90 = linalg.matmul {__allow_tf32__} ins(%81, %mapped_26 : tensor<128x64xf16>, tensor<64x64xf16>) outs(%arg10 : tensor<128x64xf32>) -> tensor<128x64xf32>
+      %mapped_27 = linalg.map { arith.addi } ins(%arg11, %3 : tensor<128x64xi32>, tensor<128x64xi32>) outs(%2 : tensor<128x64xi32>)
+      %mapped_28 = linalg.map { arith.addi } ins(%38, %arg12 : tensor<64x64xi32>, tensor<64x64xi32>) outs(%34 : tensor<64x64xi32>)
+      scf.yield %90, %mapped_27, %mapped_28 : tensor<128x64xf32>, tensor<128x64xi32>, tensor<64x64xi32>
+    }
+  ...
+  }
+}
+```
+
+## 占坑
+
+## dialect
+
+## analysis
+
+## conversion
+
+## pipeline
+
