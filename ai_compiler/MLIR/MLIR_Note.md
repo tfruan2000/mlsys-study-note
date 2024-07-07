@@ -278,7 +278,7 @@ mlir/lib/Dialect/Bufferization/IR/BufferizableOpInterface.cpp
             - bufferizeOp() 会调用`BufferizableOpInterface::bufferize()`函数来对每个op进行具体的bufferize
 - 示例：mlir/test/Dialect/Bufferization/Transforms/transform-ops.mlir
 
-```llvm
+```mlir
 // 编译命令：mlir-opt --test-transform-dialect-interpreter
 func.func @matmul(%A: tensor<12x9xf32>, %B: tensor<9x6xf32>, %C: tensor<12x6xf32>) -> tensor<12x6xf32> {
   %D = linalg.matmul ins(%A, %B: tensor<12x9xf32>, tensor<9x6xf32>) outs(%C: tensor<12x6xf32>) -> tensor<12x6xf32>

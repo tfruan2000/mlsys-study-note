@@ -248,7 +248,7 @@ switch(conditionallySpeculatable.getSpeculatability()) {
 
 获得后继操作数，例如下面的例子中`invoke`的后继操作数是`^error`的 `%e`
 
-```llvm
+```mlir
 invoke %function(%0)
   label ^success ^error(%1 : i32)
 

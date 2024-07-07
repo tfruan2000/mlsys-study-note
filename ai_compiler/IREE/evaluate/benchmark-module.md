@@ -70,7 +70,7 @@ iree-run-module \
 如果没有指定 `entry_function` （即不止一个函数）， `iree-benchmark-module` 会为每一个没有输入的函数都注册一个 benchmark（同时测多个函数的benchmark）
 
 > IREE 基准测试为我们提供了特定粒度级别的程序性能的 准确且可重现的视图，但是为了更深地分析程序性能，我们需要了解 [IREE Profiling](https://github.com/openxla/iree/blob/main/docs/developers/developing_iree/profiling.md)
-> 
+>
 
 如果是在需要在device端运行（例如cuda），则需要使用完整的编译流程
 
@@ -152,7 +152,7 @@ Benchmark                                    Time             CPU   Iterations
 BM_RunModule/process_time/real_time       0.22 ms         0.23 ms         3356
 ```
 
-```llvm
+```mlir
 func.func @abs(%input : tensor<f32>) -> (tensor<f32>) {
   %result = math.absf %input : tensor<f32>
   return %result : tensor<f32>
@@ -188,7 +188,7 @@ result[0]: hal.buffer_view
 4xf32=3 4 5 6
 ```
 
-```llvm
+```mlir
 func.func @add(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %0 = tensor.empty() : tensor<4xf32>
   %1 = linalg.generic {
@@ -228,7 +228,7 @@ iree-benchmark-module \
     --input="3x3xf32=42"
 ```
 
-```llvm
+```mlir
 !A_size = tensor<3x5xf32>
 !B_size = tensor<5x3xf32>
 !C_size = tensor<3x3xf32>
@@ -241,7 +241,7 @@ func.func @matmul_static(
 }
 ```
 
-```llvm
+```mlir
 // RUN: iree-opt %s
 
 transform.sequence failures(propagate) {
@@ -300,7 +300,7 @@ Benchmark                                         Time             CPU   Iterati
 BM_matmul_tensors/process_time/real_time      0.683 ms         2.65 ms          989 items_per_second=1.46409k/s
 ```
 
-```llvm
+```mlir
 func.func @matmul_tensors(
     %A: tensor<128x128xf32>, %B: tensor<128x128xf32>,
     %D: tensor<128x128xf32>)
@@ -342,7 +342,7 @@ func.func @matmul_tensors(
 
 参考：[codegen_spec.mlir](https://github.com/openxla/iree/blob/93038251a167c67a045fab2896ff34d3ed72aa9e/tests/transform_dialect/cpu/attention_codegen_spec.mlir) 修改
 
-```llvm
+```mlir
 transform.sequence failures(propagate) {
 ^bb1(%variant_op: !transform.any_op):
   %matmul = transform.structured.match ops{["linalg.matmul"]} in %variant_op : (!transform.any_op) -> !transform.any_op

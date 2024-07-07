@@ -341,7 +341,7 @@ mlir/lib/Dialect/SCF/IR/SCF.cpp
 ### op
 
 - scf.for : 循环body必须串行执行，因为每次迭代返回值会写回blockarg，所以下一次使用 blockarg的值受上次迭代的影响
-  ```llvm
+  ```mlir
   %alloc = memref.alloc() : memref<16xi32>
   %1 = scf.for %arg0 = %c0_i32 to %c8_i32 step %c1_i32 iter_args(%arg1 = %alloc) -> (memref<16xi32>) {
     %allco_new = memref.alloc() : memref<16xi32>
@@ -355,7 +355,7 @@ mlir/lib/Dialect/SCF/IR/SCF.cpp
   可以使用多线程的方式来执行，线程的id就是循环的迭代变量
   从scf到launch这种转换是可以通过代码自动完成的，需要的额外信息就是每一个循环的轴到launch的轴的映射关系
 
-    ```llvm
+    ```mlir
     scf.forall (%thread_id_1, %thread_id_2) in (%num_threads_1, %num_thread_2) {
              // ...
           }
@@ -378,7 +378,7 @@ mlir/lib/Dialect/SCF/IR/SCF.cpp
 	经常在 `bufferize` 后的 `canonicalize` 起效，因为`bufferize` 后 `scf.yield` 的operand更关系更明确了
 
 
-	```llvm
+	```mlir
 	// ./build/bin/mlir-opt test_if.mlir --split-input-file --one-shot-bufferize --canonicalize
 
 	// 不能命中，因为thenRegion的yield value属于thenRegion

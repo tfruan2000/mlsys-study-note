@@ -22,7 +22,7 @@ Available Dialects: affine, arith, arm_neon, bufferization, builtin, cf, check, 
 或
 --linalg-bufferize  | Convert from to Linalg ops on tensors to buffers |
 | linalg-on-buffer—>vector | --iree-llvmgpu-tensorcore-vectorization  | Pass to convert linalg into Vector and transform it to a form that can be lowered to GPU MMA ops |
-| vector—>gpu | --iree-llvmgpu-vector-to-gpu 
+| vector—>gpu | --iree-llvmgpu-vector-to-gpu
 或
 --iree-spirv-vector-to-gpu-subgroup-mma-ops | Pass to convert vector to gpu |
 | gpu—>llvm | --iree-convert-to-nvvm  | Perform final conversion from builtin/GPU/HAL/standard dialect to LLVM and NVVM dialects |
@@ -33,11 +33,11 @@ Available Dialects: affine, arith, arm_neon, bufferization, builtin, cf, check, 
 
 测试代码来自：[https://github.com/openxla/iree/blob/97779d7f494660f88864b035475ec77a1e54c6c8/compiler/src/iree/compiler/Codegen/LLVMGPU/test/tensorcore_vectorization.mlir](https://github.com/openxla/iree/blob/97779d7f494660f88864b035475ec77a1e54c6c8/compiler/src/iree/compiler/Codegen/LLVMGPU/test/tensorcore_vectorization.mlir)
 
-（1）linalg-on-tensor  —> linalg-on-buffer 
+（1）linalg-on-tensor  —> linalg-on-buffer
 
 $IREE_OPT/iree-opt --linalg-bufferize
 
-```llvm
+```mlir
 #map = affine_map<()[s0] -> (s0 * 64)>
 #map1 = affine_map<(d0, d1)[s0] -> (d0 * 1024 + s0 + d1)>
 #map2 = affine_map<(d0, d1)[s0] -> (d0 * 512 + s0 + d1)>
@@ -83,7 +83,7 @@ module {
 
 $IREE_OPT/iree-opt --iree-llvmgpu-tensorcore-vectorization
 
-```llvm
+```mlir
 #map = affine_map<()[s0] -> (s0 * 64)>
 #map1 = affine_map<(d0, d1)[s0] -> (d0 * 1024 + s0 + d1)>
 #map2 = affine_map<(d0, d1)[s0] -> (d0 * 512 + s0 + d1)>
@@ -168,7 +168,7 @@ $IREE_OPT/iree-opt --iree-llvmgpu-vector-to-gpu
 
 或$IREE_OPT/iree-opt --iree-spirv-vector-to-gpu-subgroup-mma-ops，生成的结果相同
 
-```llvm
+```mlir
 #map = affine_map<()[s0] -> (s0 * 64)>
 #map1 = affine_map<(d0, d1)[s0] -> (d0 * 1024 + s0 + d1)>
 #map2 = affine_map<(d0, d1)[s0] -> (d0 * 512 + s0 + d1)>
@@ -275,7 +275,7 @@ $IREE_OPT/iree-opt --iree-convert-to-nvvm
 
 下降的流程：mhlo dialect —> linalg-on-tensor —> linalg-on-buffer —> vector dialect —> gpu dialect
 
-```llvm
+```mlir
 module attributes {tf.versions = {producer = 179 : i32}} {
   func.func @matmul(%arg0: tensor<16x16xf32>, %arg1 : tensor<16x16xf32>) -> tensor<16x16xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
@@ -288,7 +288,7 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 
 $IREE_OPT/iree-opt --iree-mhlo-to-linalg-on-tensors
 
-```llvm
+```mlir
 module attributes {tf.versions = {producer = 179 : i32}} {
   func.func @matmul(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32>) -> tensor<16x16xf32> {
     %cst = arith.constant 0.000000e+00 : f32
@@ -300,11 +300,11 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 }
 ```
 
-（2）linalg-on-tensor  —> linalg-on-buffer 
+（2）linalg-on-tensor  —> linalg-on-buffer
 
 $IREE_OPT/iree-opt --linalg-bufferize  (bufferize 是把逻辑的存储实例化)
 
-```llvm
+```mlir
 module attributes {tf.versions = {producer = 179 : i32}} {
   func.func @matmul(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32>) -> tensor<16x16xf32> {
     %0 = bufferization.to_memref %arg1 : memref<16x16xf32>
@@ -339,7 +339,7 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 
 这种可以得到gpu dialect表示，但是得到的gpu dialect表示不能进一步lower到llvm dialect表示上。
 
-```llvm
+```mlir
 #map = affine_map<(d0, d1, d2) -> (d0, d2)>
 #map1 = affine_map<(d0, d1, d2) -> (d2, d1)>
 #map2 = affine_map<(d0, d1, d2) -> (d0, d1)>
@@ -367,8 +367,8 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 ```
 
 - $IREE_OPT/iree-opt --iree-llvmgpu-vector-to-gpu
-  
-    ```llvm
+
+    ```mlir
     #map = affine_map<(d0, d1, d2) -> (d0, d2)>
     #map1 = affine_map<(d0, d1, d2) -> (d2, d1)>
     #map2 = affine_map<(d0, d1, d2) -> (d0, d1)>
@@ -398,7 +398,7 @@ module attributes {tf.versions = {producer = 179 : i32}} {
       }
     }
     ```
-    
+
 
 ## 3、llvmgpu完整流程测试
 
@@ -413,7 +413,7 @@ $IREE_OPT/iree-opt --split-input-file --pass-pipeline="builtin.module(hal.execut
 [nvvm_mma_sync_pipeline.mlir](./img_linalg-vector-gpu-llvm/Untitled%201.txt)
 
 > -iree-codegen-linalg-to-llvm-pipeline
-> 
+>
 
 （2）gpu_wmma
 
@@ -435,7 +435,7 @@ $IREE_OPT/iree-opt --iree-transform-dialect-interpreter -transform-dialect-drop-
 
 获得 gpu dialect 表示：
 
-```llvm
+```mlir
 #map = affine_map<()[s0] -> (s0 * 16)>
 #map1 = affine_map<()[s0] -> (s0 + 8)>
 #map2 = affine_map<()[s0] -> ((s0 floordiv 32) * 16)>

@@ -29,7 +29,7 @@ export LIBRARY_PATH="/path/to/llvm-project/build/lib:$LIBRARY_PATH"
 
 以及我们使用的输入 `matmul.mlir` 如下：(主要进行了 tile 和 vectorize 操作)
 
-```llvm
+```mlir
 module {
     func.func @matmul_tensors_1(
         %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>,
@@ -75,7 +75,7 @@ module {
 
 输入也可以写成
 
-```llvm
+```mlir
 // RUN: mlir-opt -llvm-request-c-wrappers --test-transform-dialect-interpreter --test-transform-dialect-erase-schedule matmul.mlir \
 // RUN: | mlir-opt -one-shot-bufferize="bufferize-function-boundaries=1" -convert-vector-to-scf -lower-affine -convert-scf-to-cf -convert-vector-to-llvm -finalize-memref-to-llvm -convert-func-to-llvm -reconcile-unrealized-casts \
 // RUN: | mlir-translate -mlir-to-llvmir \
@@ -303,7 +303,7 @@ int main(){
   _mlir_ciface_matmul_tensors_1(&arg3, &arg0, &arg1, &arg2);
 
   auto end = chrono::high_resolution_clock::now();
-  chrono::duration<double> elapsed = end - start; 
+  chrono::duration<double> elapsed = end - start;
   std::cout<< "matmul.mlir cpu_pipeline_test success!" << std::endl;
   std::cout << "Time taken: " << elapsed.count()*1000 << " ms." << std::endl;
 
@@ -324,7 +324,7 @@ int main(){
 （3）`llc` 也在 mlir-opt 的同路径下
 
 ```python
-# auto-scheduler/examples/mlir-transform-cpu 
+# auto-scheduler/examples/mlir-transform-cpu
 
 # Step1: replace the tile_size
 # Step2: matmul.mlir —> transformed.mlir(dropped sequence) —> llvm.mlir —> llvm.ll —> llvm.o --> a.out
@@ -348,7 +348,7 @@ def replace_tile_size(new_tile_size=[8, 8, 8]):
         for line in lines:
             if line.startswith('            transform.structured.tile %0 '):
                 before = line[line.index('['):line.index(']')+1]
-                line = line.replace(before, str(new_tile_size))  
+                line = line.replace(before, str(new_tile_size))
             f.write(line)
     # print(f"before: {before}, new_tile_size: {new_tile_size} ")
 
@@ -358,37 +358,37 @@ the_path_to_mlir_opt = "/lustre/S/ruantingfeng/mlir-project/tools/llvm-project/b
 def run_transform(now_tile_size=[8, 8, 8]):
     print("now the tile_size is: {}".format(now_tile_size))
     # Step2: matmul.mlir —> transformed.mlir(dropped sequence) —> llvm.mlir —> llvm.ll —> llvm.o --> a.out
-    command1 = [f"{the_path_to_mlir_opt}/mlir-opt", 
+    command1 = [f"{the_path_to_mlir_opt}/mlir-opt",
             "-llvm-request-c-wrappers",
-            "--test-transform-dialect-interpreter", 
+            "--test-transform-dialect-interpreter",
             "--test-transform-dialect-erase-schedule",
             "matmul.mlir", "-o", "transformed.mlir"]
     # matmul.mlir --> transformed.mlir(dropped sequence)
     subprocess.run(command1)
 
-    command2 = [f"{the_path_to_mlir_opt}/mlir-opt", 
+    command2 = [f"{the_path_to_mlir_opt}/mlir-opt",
             "--pass-pipeline=builtin.module(sparse-compiler{ parallelization-strategy=dense-outer-loop vl=8 reassociate-fp-reductions=1 enable-index-optimizations=1 })",
             "transformed.mlir", "-o", "llvm.mlir"]
     # transformed.mlir --> llvm.mlir
     subprocess.run(command2)
 
-    command3 = [f"{the_path_to_mlir_opt}/mlir-translate", 
-                "llvm.mlir", 
-                "--mlir-to-llvmir", 
+    command3 = [f"{the_path_to_mlir_opt}/mlir-translate",
+                "llvm.mlir",
+                "--mlir-to-llvmir",
                 "-o", "llvm.ll"]
     # llvm.mlir --> llvm.ll
     subprocess.run(command3)
 
-    command4 = [f"{the_path_to_mlir_opt}/llc", 
-                "-filetype=obj", 
-                "llvm.ll", 
+    command4 = [f"{the_path_to_mlir_opt}/llc",
+                "-filetype=obj",
+                "llvm.ll",
                 "-o", "llvm.o"]
     # llvm.ll --> llvm.o
     subprocess.run(command4)
 
-    command5 = ["g++", 
-                "llvm.o", 
-                "test.cpp", 
+    command5 = ["g++",
+                "llvm.o",
+                "test.cpp",
                 "-lmlir_runner_utils", "-lmlir_c_runner_utils"]
     # llvm.o + test.cpp --> a.out
     subprocess.run(command5)
@@ -533,10 +533,10 @@ extern "C" {
 void _mlir_ciface_matmul_tensors_1(MemRefDescriptor<float, 2>* arg3, MemRefDescriptor<float, 2>* arg0,MemRefDescriptor<float, 2>* arg1,MemRefDescriptor<float, 2>* arg2);
 }
 
-static void BM_mlir_cpu(benchmark::State& state, 
-                    MemRefDescriptor<float, 2> arg3, 
-                    MemRefDescriptor<float, 2> arg0, 
-                    MemRefDescriptor<float, 2> arg1, 
+static void BM_mlir_cpu(benchmark::State& state,
+                    MemRefDescriptor<float, 2> arg3,
+                    MemRefDescriptor<float, 2> arg0,
+                    MemRefDescriptor<float, 2> arg1,
                     MemRefDescriptor<float, 2> arg2) {
     for (auto _ : state)
         _mlir_ciface_matmul_tensors_1(&arg3, &arg0, &arg1, &arg2);
@@ -589,12 +589,12 @@ int main(){
       {s2,1},  // strides[N]
   };
 
-  ::benchmark::RegisterBenchmark("BM_mlir_cpu", &BM_mlir_cpu, 
+  ::benchmark::RegisterBenchmark("BM_mlir_cpu", &BM_mlir_cpu,
                                   arg3, arg0, arg1, arg2)
                                   ->Unit(benchmark::kMillisecond);
-  
+
   ::benchmark::RunSpecifiedBenchmarks(); // run
-  ::benchmark::Shutdown(); 
+  ::benchmark::Shutdown();
 
   free(a);
   free(b);
@@ -607,7 +607,7 @@ int main(){
 `test_e2e_cpu.py`
 
 ```python
-# auto-scheduler/examples/mlir-transform-cpu 
+# auto-scheduler/examples/mlir-transform-cpu
 
 # Step1: replace the tile_size
 # Step2: matmul.mlir —> transformed.mlir(dropped sequence) —> llvm.mlir —> llvm.ll —> llvm.o --> a.out
@@ -631,7 +631,7 @@ def replace_tile_size(new_tile_size=[8, 8, 8]):
         for line in lines:
             if line.startswith('            transform.structured.tile %0 '):
                 before = line[line.index('['):line.index(']')+1]
-                line = line.replace(before, str(new_tile_size))  
+                line = line.replace(before, str(new_tile_size))
             f.write(line)
     # print(f"before: {before}, new_tile_size: {new_tile_size} ")
 
@@ -641,43 +641,43 @@ the_path_to_mlir_opt = "/lustre/S/ruantingfeng/mlir-project/tools/llvm-project/b
 def run_transform(now_tile_size=[8, 8, 8]):
     print("now the tile_size is: {}".format(now_tile_size))
     # Step2: matmul.mlir —> transformed.mlir(dropped sequence) —> llvm.mlir —> llvm.ll —> llvm.o --> a.out
-    command1 = [f"{the_path_to_mlir_opt}/mlir-opt", 
+    command1 = [f"{the_path_to_mlir_opt}/mlir-opt",
             "-llvm-request-c-wrappers",
-            "--test-transform-dialect-interpreter", 
+            "--test-transform-dialect-interpreter",
             "--test-transform-dialect-erase-schedule",
             "matmul.mlir", "-o", "transformed.mlir"]
     # matmul.mlir --> transformed.mlir(dropped sequence)
     subprocess.run(command1)
 
-    command2 = [f"{the_path_to_mlir_opt}/mlir-opt", 
+    command2 = [f"{the_path_to_mlir_opt}/mlir-opt",
             "--pass-pipeline=builtin.module(sparse-compiler{ parallelization-strategy=dense-outer-loop vl=8 reassociate-fp-reductions=1 enable-index-optimizations=1 })",
             "transformed.mlir", "-o", "llvm.mlir"]
     # transformed.mlir --> llvm.mlir
     subprocess.run(command2)
 
-    command3 = [f"{the_path_to_mlir_opt}/mlir-translate", 
-                "llvm.mlir", 
-                "--mlir-to-llvmir", 
+    command3 = [f"{the_path_to_mlir_opt}/mlir-translate",
+                "llvm.mlir",
+                "--mlir-to-llvmir",
                 "-o", "llvm.ll"]
     # llvm.mlir --> llvm.ll
     subprocess.run(command3)
 
-    command4 = [f"{the_path_to_mlir_opt}/llc", 
-                "-filetype=obj", 
-                "llvm.ll", 
+    command4 = [f"{the_path_to_mlir_opt}/llc",
+                "-filetype=obj",
+                "llvm.ll",
                 "-o", "llvm.o"]
     # llvm.ll --> llvm.o
     subprocess.run(command4)
 
-    # command5 = ["g++", 
-    #             "llvm.o", 
-    #             "test.cpp", 
+    # command5 = ["g++",
+    #             "llvm.o",
+    #             "test.cpp",
     #             "-lmlir_runner_utils", "-lmlir_c_runner_utils"]
-    command5 = ["g++", 
-                "llvm.o", 
-                "test_bm.cpp", 
+    command5 = ["g++",
+                "llvm.o",
+                "test_bm.cpp",
                 "-lmlir_runner_utils", "-lmlir_c_runner_utils",
-                "-I", "../../benchmark/include/", 
+                "-I", "../../benchmark/include/",
                  "-L", "../../benchmark/build/src/",
                 "-lbenchmark", "-pthread"]
     # llvm.o + test.cpp --> a.out
@@ -703,15 +703,15 @@ if __name__ == "__main__":
 
 （1）对于每个测试的 `.mlir` 代码都写一个 `test.cpp` 时间成本开销太大了，需要完成类似于 `iree-run-module` 的类似工作：自动识别 `.mlir` 代码中的测试函数，给定 shape，自动生成测试用的数据
 
-（2）将多个动态链接库 链接成一个动态库 `libout.so` 
+（2）将多个动态链接库 链接成一个动态库 `libout.so`
 
 在变换步骤：llvm.ll(有 `_mlir_ciface_matmul_tensors_1`接口) + test.cpp —> llvm.o —> a.out 时，我们使用的运行命令如下
 
 ```bash
-g++ llvm.o test_bm.cpp -lmlir_runner_utils -lmlir_c_runner_utils  -I ../../benchmark/include/ -L ../../benchmark/build/src/ -lbenchmark -pthread 
+g++ llvm.o test_bm.cpp -lmlir_runner_utils -lmlir_c_runner_utils  -I ../../benchmark/include/ -L ../../benchmark/build/src/ -lbenchmark -pthread
 ```
 
-为了更好得迁移，期望将这些动态库合成一个 libout.so 
+为了更好得迁移，期望将这些动态库合成一个 libout.so
 
 - `/lustre/S/ruantingfeng/mlir-project/tools/llvm-project/build/lib/libmlir_runner_utils.so`
 - `/lustre/S/ruantingfeng/mlir-project/tools/llvm-project/build/lib/libmlir_c_runner_utils.so`
@@ -720,7 +720,7 @@ g++ llvm.o test_bm.cpp -lmlir_runner_utils -lmlir_c_runner_utils  -I ../../bench
 
 ```bash
 # produce libout.so
-g++ -shared /lustre/S/ruantingfeng/mlir-project/tools/llvm-project/build/lib/libmlir_runner_utils.so /lustre/S/ruantingfeng/mlir-project/tools/llvm-project/build/lib/libmlir_c_runner_utils.so -I ../../../benchmark/include/ -L ../../../benchmark/build/src/ -lbenchmark -pthread -o libout.so 
+g++ -shared /lustre/S/ruantingfeng/mlir-project/tools/llvm-project/build/lib/libmlir_runner_utils.so /lustre/S/ruantingfeng/mlir-project/tools/llvm-project/build/lib/libmlir_c_runner_utils.so -I ../../../benchmark/include/ -L ../../../benchmark/build/src/ -lbenchmark -pthread -o libout.so
 # produce a.out
 g++ llvm.o test_bm.cpp -L ./libout.so -o a.out
 # run a.out

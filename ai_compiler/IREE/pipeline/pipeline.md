@@ -14,7 +14,7 @@
 
 ```cpp
 前端(TensorFlow,PyTorch,MXNet等)
-⬇               
+⬇
 Flow dialect:高阶的异步数据流表示
 ⬇
 Stream dialect:描述异步调度和执行流程
@@ -29,7 +29,7 @@ backend
 # 编译流程
 
 > 下文内容参考了：[[Dou Jiang] IREE编译流程](https://hjchen2.github.io/2023/01/04/IREE%E7%BC%96%E8%AF%91%E6%B5%81%E7%A8%8B/)
-> 
+>
 
 IREE目前支持将MHLO或XLA、Torch Tensor和TOSA作为输入，经过一系列passes编译生成IREE定义的VM bytecode中间产物，其中硬件相关代码会编译成相应的Executable，保存在VM bytecode中供host进行调用，比如CUDA相关的计算代码会被lower成PTX代码，在IREE的runtime中再被CUDA的运行时以JIT的方式编译成可执行的cubin kernel。
 
@@ -54,7 +54,7 @@ IREE编译的入口是IREEVMTransformPassPipeline，IREEVMTransformPassPipeline�
 > --iree-common-input-transformation-pipeline
 Runs the common input transformation pipeline
 用来将输入代码转换为更规范化的形式
-> 
+>
 
  可参考的bolg：[IREE编译流程解析(二)](https://hjchen2.github.io/2023/01/04/IREE%E7%BC%96%E8%AF%91%E6%B5%81%E7%A8%8B2/)
 
@@ -86,9 +86,9 @@ void registerCommonInputConversionPasses() {
 
 > --iree-abi-transformation-pipeline
 Runs the IREE native ABI bindings support pipeline
-> 
+>
 
-源码位于 [compiler\src\iree\compiler\Bindings\Native\Transforms\Passes.cpp](https://github.com/openxla/iree/blob/main/compiler/src/iree/compiler/Bindings/Native/Transforms/Passes.cpp#L38-L46)，最主要的函数是 `buildTransformPassPipeline` 
+源码位于 [compiler\src\iree\compiler\Bindings\Native\Transforms\Passes.cpp](https://github.com/openxla/iree/blob/main/compiler/src/iree/compiler/Bindings/Native/Transforms/Passes.cpp#L38-L46)，最主要的函数是 `buildTransformPassPipeline`
 
 可参考的bolg：[IREE编译流程解析(三)](https://hjchen2.github.io/2023/01/04/IREE%E7%BC%96%E8%AF%91%E6%B5%81%E7%A8%8B3/)
 
@@ -116,7 +116,7 @@ void buildTransformPassPipeline(OpPassManager &passManager,const InvocationOptio
 Runs the full IREE flow dialect transformation pipeline
 用来将将输入的ML前端(如TensorFlow或MXNet)转换为IREE的Flow方言。
 Flow dialect 是IREE的高阶方言,提供了抽象的构造来描述异步数据流和调度。包含概念如Executable(可执行文件)、Dispatch(调度)、Buffer(缓冲区)等。
-> 
+>
 
 位于 compiler\src\iree\compiler\Dialect\Flow\Transforms\Passes.cpp ，最主要的函数是 `[buildFlowTransformPassPipeline](https://github.com/openxla/iree/blob/main/compiler/src/iree/compiler/Dialect/Flow/Transforms/Passes.cpp#L182-L388)`
 
@@ -156,9 +156,9 @@ Flow dialect 是IREE的高阶方言,提供了抽象的构造来描述异步数�
 Runs the full IREE stream dialect transformation pipeline
 用来将输入程序转换为Stream方言。
 Stream dialect 是IREE的中阶方言,用于描述异步调度和执行流程。它描述了在异步硬件(如GPU)上执行的复杂异步计算流程。在Flow dialect的基础上添加了描述异步流和调度的额外语义,但仍然独立于硬件
-> 
+>
 
-位于 compiler\src\iree\compiler\Dialect\Stream\Transforms\Passes.cpp，最主要的函数是 `[buildStreamTransformPassPipeline](https://github.com/openxla/iree/blob/main/compiler/src/iree/compiler/Dialect/Stream/Transforms/Passes.cpp#L297-L335)` 
+位于 compiler\src\iree\compiler\Dialect\Stream\Transforms\Passes.cpp，最主要的函数是 `[buildStreamTransformPassPipeline](https://github.com/openxla/iree/blob/main/compiler/src/iree/compiler/Dialect/Stream/Transforms/Passes.cpp#L297-L335)`
 
 下面的内容主要来源于代码中的注释：
 
@@ -191,9 +191,9 @@ Runs the full IREE HAL dialect transformation pipeline
 用来进一步转换到HAL方言
 HAL(硬件抽象层)dialect 是IREE的低阶表示,直接对应硬件的概念和机制。它描述算子、缓冲区、执行器等的硬件细节。HAL方言目的是作为IREE backend实现的统一接口,backend可以根据不同的硬件语义自己定义HAL方言。
 定义了hal.executable、hal.dispatch、hal.buffer等概念。它们与特定硬件(如Vulkan)的语义和机制紧密相关。
-> 
+>
 
-位于 [compiler\src\iree\compiler\Dialect\HAL\Transforms\Passes.cpp](https://github.com/openxla/iree/blob/main/compiler/src/iree/compiler/Dialect/HAL/Transforms/Passes.cpp#L396-L405) ，最主要的函数是 `[buildHALTransformPassPipeline](https://github.com/openxla/iree/blob/main/compiler/src/iree/compiler/Dialect/HAL/Transforms/Passes.cpp#L209-L376)` [](https://github.com/openxla/iree/blob/main/compiler/src/iree/compiler/Dialect/HAL/Transforms/Passes.cpp#L139-L349) 
+位于 [compiler\src\iree\compiler\Dialect\HAL\Transforms\Passes.cpp](https://github.com/openxla/iree/blob/main/compiler/src/iree/compiler/Dialect/HAL/Transforms/Passes.cpp#L396-L405) ，最主要的函数是 `[buildHALTransformPassPipeline](https://github.com/openxla/iree/blob/main/compiler/src/iree/compiler/Dialect/HAL/Transforms/Passes.cpp#L209-L376)` [](https://github.com/openxla/iree/blob/main/compiler/src/iree/compiler/Dialect/HAL/Transforms/Passes.cpp#L139-L349)
 
 下面的内容主要来源于代码中的注释：
 
@@ -212,7 +212,7 @@ HAL(硬件抽象层)dialect 是IREE的低阶表示,直接对应硬件的概念�
 
 > --iree-hal-target-backends=<string>
 Target backends for executable compilation
-> 
+>
 
 （1）iree-hal-target-backends=cuda默认目标是 sm_35
 可后接命令行来指定目标  `--iree-hal-cuda-llvm-target-arch=sm_80`
@@ -227,7 +227,7 @@ Target backends for executable compilation
 
 输入 matmul.mlir
 
-```llvm
+```mlir
 func.func @matmul_static(
   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>,
   %arg2: tensor<128x128xf32>)
@@ -257,7 +257,7 @@ $IREE_OPT/iree-opt \
 
 - --iree-common-input-transformation-pipeline
 
-```llvm
+```mlir
 module {
   func.func @matmul_static(%arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>) -> tensor<128x128xf32> {
     %0 = linalg.matmul {test.attrA, test.attrC} ins(%arg0, %arg1 : tensor<128x128xf32>, tensor<128x128xf32>) outs(%arg2 : tensor<128x128xf32>) -> tensor<128x128xf32>
@@ -268,7 +268,7 @@ module {
 
 - --iree-abi-transformation-pipeline
 
-```llvm
+```mlir
 module {
   func.func @matmul_static(%arg0: !hal.buffer_view, %arg1: !hal.buffer_view, %arg2: !hal.buffer_view) -> !hal.buffer_view attributes {iree.abi.stub} {
     %0 = hal.tensor.import %arg0 "input 0" : !hal.buffer_view -> tensor<128x128xf32>
@@ -283,7 +283,7 @@ module {
 
 - --iree-flow-transformation-pipeline
 
-```llvm
+```mlir
 module {
   flow.executable private @matmul_static_dispatch_0 {
     flow.executable.export public @matmul_static_dispatch_0_matmul_128x128x128 workgroups(%arg0: index, %arg1: index, %arg2: index) -> (index, index, index) {
@@ -316,7 +316,7 @@ module {
 
 - --iree-stream-transformation-pipeline
 
-```llvm
+```mlir
 module {
   stream.executable private @matmul_static_dispatch_0 {
     stream.executable.export public @matmul_static_dispatch_0_matmul_128x128x128 workgroups(%arg0: index, %arg1: index, %arg2: index) -> (index, index, index) {
@@ -367,7 +367,7 @@ module {
 
 - --iree-hal-transformation-pipeline (指定--iree-hal-target-backends=cuda --iree-hal-cuda-llvm-target-arch=sm_80)
 
-```llvm
+```mlir
 #executable_target_cuda_nvptx_fb = #hal.executable.target<"cuda", "cuda-nvptx-fb", {target_arch = "sm_80"}>
 #device_target_cuda = #hal.device.target<"cuda", {executable_targets = [#executable_target_cuda_nvptx_fb], legacy_sync}>
 module attributes {hal.device.targets = [#device_target_cuda]} {
@@ -425,8 +425,8 @@ module attributes {hal.device.targets = [#device_target_cuda]} {
     cf.cond_br %_device_query_0, ^bb1, ^bb2
   ^bb1:  // pred: ^bb0
     hal.command_buffer.push_descriptor_set<%cmd : !hal.command_buffer> layout(%_pipeline_layout_0 : !hal.pipeline_layout)[%c0] bindings([
-      %c0 = (%buffer : !hal.buffer)[%c0, %c65536], 
-      %c1 = (%buffer_0 : !hal.buffer)[%c0, %c65536], 
+      %c0 = (%buffer : !hal.buffer)[%c0, %c65536],
+      %c1 = (%buffer_0 : !hal.buffer)[%c0, %c65536],
       %c2 = (%buffer_1 : !hal.buffer)[%c0, %c65536]
     ])
     hal.command_buffer.dispatch<%cmd : !hal.command_buffer> target(%_executable_matmul_static_dispatch_0 : !hal.executable)[0] workgroups([%c4, %c4, %c1])

@@ -42,7 +42,7 @@ iree_compile_cmd_stdout.mlir  matmul_64x64x4096_f16t_f16t_f16t.mlir  matmul_64x6
 
 ```bash
 $ python3 profiler.py --build-dir </path/to/iree/build/dir> --generated-dir </path/to/create/`generated`/dir> --dispatches=matmul_3456x1024x2048_f16t_f16t_f16t_tile_config_128x128_32x5_tensorcore_mmasync --verification-enabled=true --profiling-enabled=true
----------------------------------------------------------------- 
+----------------------------------------------------------------
 Dispatch      : matmul_3456x1024x2048_f16t_f16t_f16t_tile_config_128x128_32x5_tensorcore_mmasync
 Provider      : IREE Codegen
 OpKind        : OperationKind.Matmul
@@ -74,11 +74,11 @@ IREE的dispatch_profiler的不足
 
 举个例子，对于输入：
 
-```llvm
+```mlir
 !matrixA_type = tensor<1024x256xf32>
 !matrixB_type = tensor<256x512xf32>
 !matrixC_type = tensor<1024x512xf32>
- 
+
 module @arithmetic {
    func.func @matmul(
         %arg0: !matrixA_type , %arg1: !matrixB_type)
@@ -96,7 +96,7 @@ module @arithmetic {
 
 会生成不同的下面的文件：
 
-```llvm
+```mlir
 #config = #iree_codegen.lowering_config<tile_sizes = [[8, 2, 4]]>
 #translation = #iree_codegen.translation_info<LLVMGPUMatmulSimt>
 #compilation = #iree_codegen.compilation_info<lowering_config = #config, translation_info = #translation, workgroup_size = [32, 1, 1]>
@@ -117,7 +117,7 @@ module @arithmetic {
 
 ```bash
 [Env]
-iree_bin = xxx/iree_build/tools 
+iree_bin = xxx/iree_build/tools
 input_file = matmul.mlir
 output_file = matmul.csv
 
@@ -130,12 +130,12 @@ tile_n = [32,64]
 tile_k = [32,64,128,256]
 block_dim_x = [64]
 block_dim_y = [2]
-block_dim_z = [1]                                                                         
+block_dim_z = [1]
 pipeline_depth = [2]
 
 [SearchStrategy]
 tuner = XGBoostTuner
-n_trial = 16 
+n_trial = 16
 ```
 
 参数说明：
@@ -166,7 +166,7 @@ Transforming ......
 Step 2: Search the space to get the best performance config
 ==========================================================
 [Compiling (profile)] ../iree-build/tools/iree-compile generated/linalg/matmul/matmul_512x512x512_f32t_f32t_f32t/tilesize_64x64x128_interchange_0x1x2_vectorsize_32x32_2_64x2x1_tensorcore_mmasync.mlir -o generated/linalg/matmul/matmul_512x512x512_f32t_f32t_f32t/tilesize_64x64x128_interchange_0x1x2_vectorsize_32x32_2_64x2x1_tensorcore_mmasync_profile.vmfb --iree-hal-target-backends=cuda --iree-hal-cuda-llvm-target-arch=sm_80 --iree-codegen-llvmgpu-use-mma-sync --iree-hal-benchmark-dispatch-repeat-count=64
----------------------------------------------------------------- 
+----------------------------------------------------------------
 Dispatch      : matmul_512x512x512_f32t_f32t_f32t_tilesize_64x64x128_interchange_0x1x2_vectorsize_32x32_2_64x2x1_tensorcore_mmasync
 Provider      : IREE Codegen
 OpKind        : OperationKind.Matmul
@@ -174,11 +174,11 @@ Operation     : matmul_512x512x512_f32t_f32t_f32t
 Configuration : tilesize_64x64x128_interchange_0x1x2_vectorsize_32x32_2_64x2x1_tensorcore_mmasync
 Arguments     : --batch_count=1 --m=512 --n=512 --k=512 --lhs=f32t --rhs=f32t --result=f32t
                 --split_k_mode=N/A --split_k_slices=N/A
-Verification  : 
+Verification  :
 Runtime(ms)   : 0.097
 GFLOPs        : 2767.38
 [Compiling (profile)] ../iree-build/tools/iree-compile generated/linalg/matmul/matmul_512x512x512_f32t_f32t_f32t/tilesize_128x64x64_interchange_0x1x2_vectorsize_32x32_2_64x2x1_tensorcore_mmasync.mlir -o generated/linalg/matmul/matmul_512x512x512_f32t_f32t_f32t/tilesize_128x64x64_interchange_0x1x2_vectorsize_32x32_2_64x2x1_tensorcore_mmasync_profile.vmfb --iree-hal-target-backends=cuda --iree-hal-cuda-llvm-target-arch=sm_80 --iree-codegen-llvmgpu-use-mma-sync --iree-hal-benchmark-dispatch-repeat-count=64
----------------------------------------------------------------- 
+----------------------------------------------------------------
 Dispatch      : matmul_512x512x512_f32t_f32t_f32t_tilesize_64x32x128_interchange_0x1x2_vectorsize_32x32_2_64x2x1_tensorcore_mmasync
 Provider      : IREE Codegen
 OpKind        : OperationKind.Matmul
@@ -186,15 +186,15 @@ Operation     : matmul_512x512x512_f32t_f32t_f32t
 Configuration : tilesize_64x32x128_interchange_0x1x2_vectorsize_32x32_2_64x2x1_tensorcore_mmasync
 Arguments     : --batch_count=1 --m=512 --n=512 --k=512 --lhs=f32t --rhs=f32t --result=f32t
                 --split_k_mode=N/A --split_k_slices=N/A
-Verification  : 
+Verification  :
 Runtime(ms)   : 0.095
 GFLOPs        : 2825.64
 [Compiling (profile)] ../iree-build/tools/iree-compile generated/linalg/matmul/matmul_512x512x512_f32t_f32t_f32t/tilesize_64x32x64_interchange_0x1x2_vectorsize_32x32_2_64x2x1_tensorcore_mmasync.mlir -o generated/linalg/matmul/matmul_512x512x512_f32t_f32t_f32t/tilesize_64x32x64_interchange_0x1x2_vectorsize_32x32_2_64x2x1_tensorcore_mmasync_profile.vmfb --iree-hal-target-backends=cuda --iree-hal-cuda-llvm-target-arch=sm_80 --iree-codegen-llvmgpu-use-mma-sync --iree-hal-benchmark-dispatch-repeat-count=64
----------------------------------------------------------------- 
+----------------------------------------------------------------
 ...
 
 ********************************************************
-[Performance]: The best is tilesizes:(64x32x128)_interchange:(012)_vectorsizes:(32x32)_stages:2_blockdims:(64x2x1)    tensorcore mmasync 
+[Performance]: The best is tilesizes:(64x32x128)_interchange:(012)_vectorsizes:(32x32)_stages:2_blockdims:(64x2x1)    tensorcore mmasync
 with gflops 2825.64
 
 0 hours 0 minutes 30 seconds
