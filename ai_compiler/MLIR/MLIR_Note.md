@@ -853,12 +853,20 @@ llvm/include/llvm/ADT/STLExtras.h
 - llvm::zip
 
 	- 遍历时使用 `std::get<0>` 和 `std::get<1>` 来获得值
-
   ```cpp
   for (const auto &it :llvm::enumerate(llvm::zip(valAVec, valBVec))) {
 	    Value aVal = std::get<0>(it.value());
 	    Value bVal = std::get<1>(it.value());
 	```
+
+  - 比较
+  ```cpp
+  for (const auto &[operand, arg] :
+       llvm::zip(op->getOperands(), body->getArguements())) {
+    if (operand != arg)
+      return failure();
+  }
+  ```
 
 ### function
 

@@ -10,11 +10,11 @@
 - [x] dialect
   - [x] Auxiliar
   - [x] LinalgExt
-- [ ] analysis
-- [ ] conversion
-- [ ] pipeline
+- [ ] Analysis
+- [ ] Conversion
+- [ ] Pipeline
 
-关于 Triton-Linalg 项目技术细节 主要还是在后三节 Analysis , Conversion 以及 Pipeline，但目前还没整理好（还没看完qwq）， 闲暇时再继续总结下。本人知识深度有限，还望大家指正~
+关于 Triton-Linalg 项目技术细节 主要还是在后三节 `Analysis` , `Conversion` 以及 `Pipeline`，但目前还没整理好（还没时间看qwq），闲暇时再继续总结下。本人知识深度有限，还望大家指正~
 
 ## 介绍
 
@@ -1171,20 +1171,121 @@ B[4] = A[0] + A[1] + A[2] + A[3] + A[4]
 
 - linalg_ext.assert
 
-assert op是用来 debug 的，`linalg_ext.assert` 输入为一个 `condition tensor`，一个 `message string`，如果 condition 是 false 的话（应该是 condition tensor 中的每个值都满足），就会答应 message 并中断程序，和c++中的assert(condition && "messagge info") 效果一样。用来承接 `tt.assert`下降。
+assert op是用来 debug 的，`linalg_ext.assert` 输入为一个 `condition tensor`，一个 `message string`，如果 condition 是 false 的话（应该是 condition tensor 中的每个值都满足），就会打印 message 并中断程序，和c++中的 `assert(condition && "messagge info")` 效果一样。用来承接 `tt.assert`下降。
 
 ```mlir
 %1 = linalg_ext.assert {msg = "x > 0"} ins(%arg0 : tensor<32xi32>) -> tensor<32xi32>
 ```
 
 ## Analysis
+
+```bash
+include/triton-linalh/Analysis/AxisInfoAnalysis.h
+lib/Analysis/AxisInfoAnalysis.cpp
+```
+
 指针相关的分析：
 
 1. 获得访存时目标memref的layout，以从ptr中获得正确的memref
 2. 优化op下降(例如尽可能地连续访存)
 
 ## Conversion
-op-2-op，什么情况下会命中该conversion pattern，按pattern的优先级分析
+
+```bash
+include/triton-linalg/Conversion
+lib/Conversion
+```
+
+`triton-linalg` 的 `Conversion` 部分包含了以下四种 `Dialect-to-Dialect` 的 `Conversion`，覆盖了 `ttir` 中可能出现的ir。
+
+```bash
+ArithToLinalg
+MathToLinalg
+TritonToLinalg
+TritonToTensor
+```
+
+op-to-op conversion summary:
+
+| src     | target        |
+| -------- | ------------- |
+| arith.ops 标量计算   | arith.ops 标量计算      |
+| arith.constant表示的tensor      | linalg.fill      |
+| arith.ops / math.ops tensor计算   | linalg.map{arith.ops}  / linalg.map{math.ops}    |
+| tt.cat  |   tensor.insert_slice   |
+
+
+### Arith/MathToLinalg
+
+这两个 `Conversion` 都是为了将 **输出为 tensor** 的 `arith.ops` / `math.ops` 转化为 `linalg.map{arith.ops}` / `linalg.map{math.ops}`，以方便后续对 `linalg-on-tensor` 的 ir 表示统一处理（例如 `tile 和 bufferize`）。当输出为标量时不处理。
+
+(1) arith.constant
+
+完成以下转换：
+
+```mlir
+arith.constant dense<0.0> : tensor<axf32>
+->
+%cst = arith.constant 0.0 : f32
+%empty = tensor.empty() : tensor<axf32>
+%fill = linalg.fill ins(%cst : f32) outs(%empty : tensor<axf32>) -> tensor<axf32>
+```
+
+当 `arith.constant` 的值都是一样 `ArithConstantPattern` 才会成功，对于下面的 constant 是不会转为 `linalg.fill` 的。
+
+```bash
+%cst_tensor = arith.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
+```
+
+(2) arith.select
+
+完成以下转换：
+
+- `cond` 为 `tensor` 时，直接作为 `linalg.map` 的 `ins`
+
+```mlir
+%select = arith.select %cond, %trueVal, %falseVal : tensor<128xf32>
+->
+%empty = tensor.empty() : tensor<128xf32>
+%mapped = linalg.map { arith.select } ins(%cond, %trueVal, %falseVal : tensor<128xi1>, tensor<128xf32>, tensor<128xf32>) outs(%empty : tensor<128xf32>)
+```
+
+- `cond` 为 标量(i1) 时，通过 `fill` 生成一个表示 `cond` 的 `tensor`，使用 `fill` 作为`linalg.map` 的 `ins`
+
+```mlir
+%select = arith.select %cond, %trueVal, %falseVal : tensor<128xf32>
+->
+%empty = tensor.empty() : tensor<128xi1>
+%fill = linalg.fill ins(%cond : i1) outs(%empty : tensor<128xi1>) -> tensor<128xi1>
+%empty1 = tensor.empty() : tensor<128xf32>
+%mapped = linalg.map { arith.select } ins(%fill, %trueVal, %falseVal : tensor<128xi1>, tensor<128xf32>, tensor<128xf32>) outs(%empty1 : tensor<128xf32>)
+```
+
+- 其他 arith.ops / math.ops
+
+剩下这些op的都有 `SameOperandsAndResultType`，因此每个 `operand` 的 `type` 完全相同，且这些op只有单个输出。
+
+转换函数逻辑较为简单，获取 `resultType` 后以 `operands` 来创建 `linalg.map`，主要的逻辑在 [GenericOpPattern](https://github.com/Cambricon/triton-linalg/blob/master/include/triton-linalg/Conversion/LinalgCommon/Pattern.h#L28)。完成以下转换：
+
+```mlir
+%add = arith.addi %lhs, %rhs : tensor<128xi32>
+->
+%mapped = linalg.map { arith.addi } ins(%lhs, %rhs : tensor<128xi32>, tensor<128xi32>) outs(%empty : tensor<128xi32>)
+```
+
+### TritonToTensor
+
+
+
+```bash
+%cat = tt.cat %lhs, %rhs : tensor<32xf32> -> tensor<64xf32>
+->
+%empty = tensor.empty() : tensor<64xf32>
+%inserted_slice = tensor.insert_slice %lhs into %empty[0] [32] [1] : tensor<32xf32> into tensor<64xf32>
+%offset = arith.constant 32 : index
+%inserted_slice_1 = tensor.insert_slice %rhs into %inserted_slice[%offset] [32] [1] : tensor<32xf32> into tensor<64xf32>
+```
+
 
 ### ptr
 
