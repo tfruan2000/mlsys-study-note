@@ -1202,7 +1202,7 @@ lib/Conversion
 ArithToLinalg
 MathToLinalg
 TritonToLinalg
-TritonToTensor
+TritonToTensor(其中只包含了 tt.cat 到 tensor.insert_slice 的转换，本质上也是 tt.ops 的下降，所以就放在 TritonToLinalg 一起讲)
 ```
 
 op-to-op conversion summary:
@@ -1215,7 +1215,7 @@ op-to-op conversion summary:
 | tt.cat  |   tensor.insert_slice   |
 
 
-### Arith/MathToLinalg
+### arith.ops / math.ops
 
 这两个 `Conversion` 都是为了将 **输出为 tensor** 的 `arith.ops` / `math.ops` 转化为 `linalg.map{arith.ops}` / `linalg.map{math.ops}`，以方便后续对 `linalg-on-tensor` 的 ir 表示统一处理（例如 `tile 和 bufferize`）。当输出为标量时不处理。
 
@@ -1273,11 +1273,41 @@ arith.constant dense<0.0> : tensor<axf32>
 %mapped = linalg.map { arith.addi } ins(%lhs, %rhs : tensor<128xi32>, tensor<128xi32>) outs(%empty : tensor<128xi32>)
 ```
 
-### TritonToTensor
+### tt.ops
 
-
-
+代码中包含了很多 `triton.ops` 的下降 `pattern`，除了 `atomic` 以及 `load, store`。这节也只介绍除 `atomic/load/store` 之外的 `tt.ops` 下降 `pattern`。
 ```bash
+lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
+```
+
+- tt.broadcast
+
+`tt.broadcast` 会改变 `dimSize` 为 1 的维度，这和 `linalg.broadcast` 会同时扩展维度的行为不一致，所以需要先使用 `tensor.collapse_shape` fold 掉 `unitDim`，再用 `linalg.broadcast` 扩展到对应 resultType。
+
+```mlir
+tt.broadcast %arg0 : tensor<1x32x1xf32> -> tensor<2x32x4xf32>
+->
+%collapsed = tensor.collapse_shape %arg0 [[0, 1, 2]] : tensor<1x32x1xf32> into tensor<32xf32>
+%empty = tensor.empty() : tensor<2x32x4xf32>
+%broadcasted = linalg.broadcast ins(%collapsed : tensor<32xf32>) outs(%empty : tensor<2x32x4xf32>) dimensions = [0, 2]
+```
+
+- tt.splat
+
+`tt.splat` 一般用来将一个标量数据 `splat` 到一个 tensor，和 `linalg.fill` 语义相同。
+
+```mlir
+%splat = tt.splat %arg0 : i32 -> tensor<1024xi32>
+->
+%empty = tensor.empty() : tensor<1024xi32>
+%fill = linalg.fill ins(%arg0: i32) outs(%empty : tensor<1024xi32>) -> tensor<1024xi32>
+```
+
+- tt.cat
+
+`tt.cat` 一般在最高维进行 concatenate，而且两个 operand 的type完全相同(td中标明了`SameTypeOperands`)，所以只需要用两个 `tensor.insert_slice` 拼接即可。第一个的`tensor.insert_slice` 的 offset 为0，第二个的 offset 为 operand_shape[0]。
+
+```mlir
 %cat = tt.cat %lhs, %rhs : tensor<32xf32> -> tensor<64xf32>
 ->
 %empty = tensor.empty() : tensor<64xf32>
