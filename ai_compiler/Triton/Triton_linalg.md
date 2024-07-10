@@ -463,7 +463,7 @@ module {
 | tt.make_range   | linalg_ext.make_range       |
 | arith.ops tensor计算   | linalg.map{arith.ops}      |
 | tt.broadcast  | linalg.broadcast      |
-| tt.addptr    | 并没有指针+layout(即不再表示出a_ptrs)了，而是layout改变，aux.view使用layout信息获得具体的memref  |
+| tt.addptr    | linalg.map{arith.muli+arith.addi}  |
 | tt.dot | linalg.matmul |
 | 可变mask中的信息 mul + sub + cmp |  可变mask中的信息 mul + sub + fill + pad |
 | tt.load | llvm.inttoptr + aux.view + bufferization.to_tensor + linalg_ext.gather |
@@ -472,243 +472,433 @@ module {
 对ptr进行load/store时，通过llvm.inttoptr + aux.view转为来对memref的操作。
 （现在只是对比ir的情况获得的上表，具体还要看 [TritonToLinalg.cpp](https://github.com/Cambricon/triton-linalg/blob/master/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp) 中的代码，咱之后再分析）
 
+`ExtractLikeMoveBackwardPass` 和 `Canonicalizer` 导致 `-triton-to-linalg`输出的结果比较难理解，所以在直接`-triton-to-linalg -mlir-print-ir-after-all` 看 `TritonToLinalgPass` 结束后的ir。下面这段ir还没有经过 `cse` 和 `canonicalize`，所以显得比较冗余。
+
 ```mlir
 // triton-linalg-opt -triton-to-linalg matmul.ttir
 #map = affine_map<(d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)>
 module {
   func.func @matmul_kernel(%arg0: i64, %arg1: i64, %arg2: i64, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32, %arg8: i32) {
-    %c128 = arith.constant 128 : index
-    %false = arith.constant false
-    %true = arith.constant true
-    %c64 = arith.constant 64 : index
-    %c0 = arith.constant 0 : index
-    %c8_i32 = arith.constant 8 : i32
-    %c128_i32 = arith.constant 128 : i32
-    %cst = arith.constant 0.000000e+00 : f32
-    %c64_i32 = arith.constant 64 : i32
-    %c0_i32 = arith.constant 0 : i32
-    %c1_i32 = arith.constant 1 : i32
-    %c127_i32 = arith.constant 127 : i32
-    %c63_i32 = arith.constant 63 : i32
-    %cst_0 = arith.constant 0.000000e+00 : f16
-
+    %cst = arith.constant 0.000000e+00 : f16
     %0 = tensor.empty() : tensor<128x64xf16>
-    %1 = tensor.empty() : tensor<64x64xf16>
-    %2 = tensor.empty() : tensor<128x64xi32>
     // arith.constant 表示的tensor下降为 linalg.fill
-    %3 = linalg.fill ins(%c64_i32 : i32) outs(%2 : tensor<128x64xi32>) -> tensor<128x64xi32>
-    %4 = tensor.empty() : tensor<128x64xf32>
-    %5 = linalg.fill ins(%cst : f32) outs(%4 : tensor<128x64xf32>) -> tensor<128x64xf32>
+    %1 = linalg.fill ins(%cst : f16) outs(%0 : tensor<128x64xf16>) -> tensor<128x64xf16>
+    %cst_0 = arith.constant 0.000000e+00 : f16
+    %2 = tensor.empty() : tensor<64x64xf16>
+    %3 = linalg.fill ins(%cst_0 : f16) outs(%2 : tensor<64x64xf16>) -> tensor<64x64xf16>
+    %c63_i32 = arith.constant 63 : i32
+    %c127_i32 = arith.constant 127 : i32
+    %c1_i32 = arith.constant 1 : i32
+    %c0_i32 = arith.constant 0 : i32
+    %c64_i32 = arith.constant 64 : i32
+    %4 = tensor.empty() : tensor<128x64xi32>
+    %5 = linalg.fill ins(%c64_i32 : i32) outs(%4 : tensor<128x64xi32>) -> tensor<128x64xi32>
+    %cst_1 = arith.constant 0.000000e+00 : f32
+    %6 = tensor.empty() : tensor<128x64xf32>
+    %7 = linalg.fill ins(%cst_1 : f32) outs(%6 : tensor<128x64xf32>) -> tensor<128x64xf32>
+    %c64_i32_2 = arith.constant 64 : i32
+    %c128_i32 = arith.constant 128 : i32
+    %c8_i32 = arith.constant 8 : i32
 
     // tt.get_program_id 在目前还没该变，后续应该类似gpu的行为，转为(x, y, z)来表示任务id
-    %6 = tt.get_program_id x : i32
-
+    %8 = tt.get_program_id x : i32
     // %arg3: M, %arg4: N
     // num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
-    %7 = arith.addi %arg3, %c127_i32 : i32
-    %8 = arith.divsi %7, %c128_i32 : i32
+    %9 = arith.addi %arg3, %c127_i32 : i32
+    %10 = arith.divsi %9, %c128_i32 : i32
     // num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
-    %9 = arith.addi %arg4, %c63_i32 : i32
-    %10 = arith.divsi %9, %c64_i32 : i32
-
+    %11 = arith.addi %arg4, %c63_i32 : i32
+    %12 = arith.divsi %11, %c64_i32_2 : i32
     // num_pid_in_group = GROUP_SIZE_M  * num_pid_n
-    %11 = arith.muli %10, %c8_i32 : i32
-
-    // group_id = pid // num_pid_in_group
-    %12 = arith.divsi %6, %11 : i32
-
-    // frist_pid_m = group_id * GROUP_SIZE_M
     %13 = arith.muli %12, %c8_i32 : i32
-
+    // group_id = pid // num_pid_in_group
+    %14 = arith.divsi %8, %13 : i32
+    // frist_pid_m = group_id * GROUP_SIZE_M
+    %15 = arith.muli %14, %c8_i32 : i32
     // group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
-    %14 = arith.subi %8, %13 : i32
-    %15 = arith.minsi %14, %c8_i32 : i32
-
+    %16 = arith.subi %10, %15 : i32
+    %17 = arith.minsi %16, %c8_i32 : i32
     // pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
-    %16 = arith.remsi %6, %15 : i32
-    %17 = arith.addi %13, %16 : i32
-
+    %18 = arith.remsi %8, %17 : i32
+    %19 = arith.addi %15, %18 : i32
     // pid_n = (pid % num_pid_in_group) // group_size_m
-    %18 = arith.remsi %6, %11 : i32
-    %19 = arith.divsi %18, %15 : i32
+    %20 = arith.remsi %8, %13 : i32
+    %21 = arith.divsi %20, %17 : i32
+    %22 = arith.muli %19, %c128_i32 : i32
 
     // offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
-    %20 = arith.muli %17, %c128_i32 : i32
-    %21 = tensor.empty() : tensor<128xi32>
+    %23 = tensor.empty() : tensor<128xi32>
+    %c0_i32_3 = arith.constant 0 : i32
+    %c128_i32_4 = arith.constant 128 : i32
     // tt.make_range -> linalg_ext.make_range
-    %22 = linalg_ext.make_range {operandSegmentSizes = array<i32: 2, 1>} ins(%c0_i32, %c128_i32 : i32, i32) outs(%21 : tensor<128xi32>) -> tensor<128xi32>
+    %24 = linalg_ext.make_range {operandSegmentSizes = array<i32: 2, 1>} ins(%c0_i32_3, %c128_i32_4 : i32, i32) outs(%23 : tensor<128xi32>) -> tensor<128xi32>
+    %25 = tensor.empty() : tensor<128xi32>
     // tt.splat -> linalg.fill
-    %23 = linalg.fill ins(%20 : i32) outs(%21 : tensor<128xi32>) -> tensor<128xi32>
+    %26 = linalg.fill ins(%22 : i32) outs(%25 : tensor<128xi32>) -> tensor<128xi32>
+    %27 = tensor.empty() : tensor<128xi32>
     // arith.ops+tensor -> linalg.map{arith.ops}
-    %mapped = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%23, %22 : tensor<128xi32>, tensor<128xi32>) outs(%21 : tensor<128xi32>)
-    %24 = linalg.fill ins(%arg3 : i32) outs(%21 : tensor<128xi32>) -> tensor<128xi32>
-    %mapped_1 = linalg.map { arith.remsi {overflowFlags = #arith.overflow<none>} } ins(%mapped, %24 : tensor<128xi32>, tensor<128xi32>) outs(%21 : tensor<128xi32>)
+    %mapped = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%26, %24 : tensor<128xi32>, tensor<128xi32>) outs(%27 : tensor<128xi32>)
+    %28 = tensor.empty() : tensor<128xi32>
+    %29 = linalg.fill ins(%arg3 : i32) outs(%28 : tensor<128xi32>) -> tensor<128xi32>
+    %30 = tensor.empty() : tensor<128xi32>
+    %mapped_5 = linalg.map { arith.remsi } ins(%mapped, %29 : tensor<128xi32>, tensor<128xi32>) outs(%30 : tensor<128xi32>)
 
     // offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
-    %25 = arith.muli %19, %c64_i32 : i32
-    %26 = tensor.empty() : tensor<64xi32>
-    // 因为BLOCK_SIZE_K = BLOCK_SIZE_N， 所以复用了make_range
+    %31 = arith.muli %21, %c64_i32_2 : i32
+    %32 = tensor.empty() : tensor<64xi32>
+    %c0_i32_6 = arith.constant 0 : i32
+    %c64_i32_7 = arith.constant 64 : i32
     // offs_k = tl.arange(0, BLOCK_SIZE_K) = tl.arange(0, BLOCK_SIZE_N)
-    %27 = linalg_ext.make_range {operandSegmentSizes = array<i32: 2, 1>} ins(%c0_i32, %c64_i32 : i32, i32) outs(%26 : tensor<64xi32>) -> tensor<64xi32>
-    %28 = linalg.fill ins(%25 : i32) outs(%26 : tensor<64xi32>) -> tensor<64xi32>
-    %mapped_2 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%28, %27 : tensor<64xi32>, tensor<64xi32>) outs(%26 : tensor<64xi32>)
-    %29 = linalg.fill ins(%arg4 : i32) outs(%26 : tensor<64xi32>) -> tensor<64xi32>
-    %mapped_3 = linalg.map { arith.remsi {overflowFlags = #arith.overflow<none>} } ins(%mapped_2, %29 : tensor<64xi32>, tensor<64xi32>) outs(%26 : tensor<64xi32>)
+    %33 = linalg_ext.make_range {operandSegmentSizes = array<i32: 2, 1>} ins(%c0_i32_6, %c64_i32_7 : i32, i32) outs(%32 : tensor<64xi32>) -> tensor<64xi32>
+    %34 = tensor.empty() : tensor<64xi32>
+    %35 = linalg.fill ins(%31 : i32) outs(%34 : tensor<64xi32>) -> tensor<64xi32>
+    %36 = tensor.empty() : tensor<64xi32>
+    %mapped_8 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%35, %33 : tensor<64xi32>, tensor<64xi32>) outs(%36 : tensor<64xi32>)
+    %37 = tensor.empty() : tensor<64xi32>
+    %38 = linalg.fill ins(%arg4 : i32) outs(%37 : tensor<64xi32>) -> tensor<64xi32>
+    %39 = tensor.empty() : tensor<64xi32>
+    %mapped_9 = linalg.map { arith.remsi } ins(%mapped_8, %38 : tensor<64xi32>, tensor<64xi32>) outs(%39 : tensor<64xi32>)
 
-    // mapped_6 = (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
-    %expanded = tensor.expand_shape %mapped_1 [[0, 1]] : tensor<128xi32> into tensor<128x1xi32>
-    %30 = tensor.empty() : tensor<128x1xi32>
-    %31 = linalg.fill ins(%arg6 : i32) outs(%30 : tensor<128x1xi32>) -> tensor<128x1xi32>
-    %mapped_4 = linalg.map { arith.muli {overflowFlags = #arith.overflow<none>} } ins(%expanded, %31 : tensor<128x1xi32>, tensor<128x1xi32>) outs(%30 : tensor<128x1xi32>)
-    // 先用clollapse_shape来fold掉unit dim，减小broadcased的开销
-    %collapsed = tensor.collapse_shape %mapped_4 [[0, 1]] : tensor<128x1xi32> into tensor<128xi32>
-    // tt.broadcast -> linalg.broadcast
-    %broadcasted = linalg.broadcast ins(%collapsed : tensor<128xi32>) outs(%2 : tensor<128x64xi32>) dimensions = [1]
-    %broadcasted_5 = linalg.broadcast ins(%27 : tensor<64xi32>) outs(%2 : tensor<128x64xi32>) dimensions = [0]
-    %mapped_6 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%broadcasted, %broadcasted_5 : tensor<128x64xi32>, tensor<128x64xi32>) outs(%2 : tensor<128x64xi32>)
+    // mapped_14 = (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    // tt.expaned_dims -> tensor.expand_shape
+    %expanded = tensor.expand_shape %mapped_5 [[0, 1]] : tensor<128xi32> into tensor<128x1xi32>
+    %40 = tensor.empty() : tensor<128x1xi32>
+    %41 = linalg.fill ins(%arg6 : i32) outs(%40 : tensor<128x1xi32>) -> tensor<128x1xi32>
+    %42 = tensor.empty() : tensor<128x1xi32>
+    %mapped_10 = linalg.map { arith.muli {overflowFlags = #arith.overflow<none>} } ins(%expanded, %41 : tensor<128x1xi32>, tensor<128x1xi32>) outs(%42 : tensor<128x1xi32>)
+    %expanded_11 = tensor.expand_shape %33 [[0, 1]] : tensor<64xi32> into tensor<1x64xi32>
+    // tt.broadcast -> tensor.collapse_shape + linalg.broadcast
+    %collapsed = tensor.collapse_shape %mapped_10 [[0, 1]] : tensor<128x1xi32> into tensor<128xi32>
+    %43 = tensor.empty() : tensor<128x64xi32>
+    %broadcasted = linalg.broadcast ins(%collapsed : tensor<128xi32>) outs(%43 : tensor<128x64xi32>) dimensions = [1]
+    %collapsed_12 = tensor.collapse_shape %expanded_11 [[0, 1]] : tensor<1x64xi32> into tensor<64xi32>
+    %44 = tensor.empty() : tensor<128x64xi32>
+    %broadcasted_13 = linalg.broadcast ins(%collapsed_12 : tensor<64xi32>) outs(%44 : tensor<128x64xi32>) dimensions = [0]
+    %45 = tensor.empty() : tensor<128x64xi32>
+    %mapped_14 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%broadcasted, %broadcasted_13 : tensor<128x64xi32>, tensor<128x64xi32>) outs(%45 : tensor<128x64xi32>)
 
-    // mapped_12 = (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
-    %expanded_7 = tensor.expand_shape %27 [[0, 1]] : tensor<64xi32> into tensor<64x1xi32>
-    %32 = tensor.empty() : tensor<64x1xi32>
-    %33 = linalg.fill ins(%arg7 : i32) outs(%32 : tensor<64x1xi32>) -> tensor<64x1xi32>
-    %mapped_8 = linalg.map { arith.muli {overflowFlags = #arith.overflow<none>} } ins(%expanded_7, %33 : tensor<64x1xi32>, tensor<64x1xi32>) outs(%32 : tensor<64x1xi32>)
-    %collapsed_9 = tensor.collapse_shape %mapped_8 [[0, 1]] : tensor<64x1xi32> into tensor<64xi32>
-    %34 = tensor.empty() : tensor<64x64xi32>
-    %broadcasted_10 = linalg.broadcast ins(%collapsed_9 : tensor<64xi32>) outs(%34 : tensor<64x64xi32>) dimensions = [1]
-    %broadcasted_11 = linalg.broadcast ins(%mapped_3 : tensor<64xi32>) outs(%34 : tensor<64x64xi32>) dimensions = [0]
-    %mapped_12 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%broadcasted_10, %broadcasted_11 : tensor<64x64xi32>, tensor<64x64xi32>) outs(%34 : tensor<64x64xi32>)
+    // mapped_22 = (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+    %expanded_15 = tensor.expand_shape %33 [[0, 1]] : tensor<64xi32> into tensor<64x1xi32>
+    %46 = tensor.empty() : tensor<64x1xi32>
+    %47 = linalg.fill ins(%arg7 : i32) outs(%46 : tensor<64x1xi32>) -> tensor<64x1xi32>
+    %48 = tensor.empty() : tensor<64x1xi32>
+    %mapped_16 = linalg.map { arith.muli {overflowFlags = #arith.overflow<none>} } ins(%expanded_15, %47 : tensor<64x1xi32>, tensor<64x1xi32>) outs(%48 : tensor<64x1xi32>)
+    %expanded_17 = tensor.expand_shape %mapped_9 [[0, 1]] : tensor<64xi32> into tensor<1x64xi32>
+    %collapsed_18 = tensor.collapse_shape %mapped_16 [[0, 1]] : tensor<64x1xi32> into tensor<64xi32>
+    %49 = tensor.empty() : tensor<64x64xi32>
+    %broadcasted_19 = linalg.broadcast ins(%collapsed_18 : tensor<64xi32>) outs(%49 : tensor<64x64xi32>) dimensions = [1]
+    %collapsed_20 = tensor.collapse_shape %expanded_17 [[0, 1]] : tensor<1x64xi32> into tensor<64xi32>
+    %50 = tensor.empty() : tensor<64x64xi32>
+    %broadcasted_21 = linalg.broadcast ins(%collapsed_20 : tensor<64xi32>) outs(%50 : tensor<64x64xi32>) dimensions = [0]
+    %51 = tensor.empty() : tensor<64x64xi32>
+    %mapped_22 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%broadcasted_19, %broadcasted_21 : tensor<64x64xi32>, tensor<64x64xi32>) outs(%51 : tensor<64x64xi32>)
 
     // scf.for 循环上界 tl.cdiv(K, BLOCK_SIZE_K)
-    %35 = arith.addi %arg5, %c63_i32 : i32
-    %36 = arith.divsi %35, %c64_i32 : i32
-    %37 = arith.muli %arg7, %c64_i32 : i32
-    %38 = linalg.fill ins(%37 : i32) outs(%34 : tensor<64x64xi32>) -> tensor<64x64xi32>
-    %39 = tensor.empty() : tensor<1x64xi1>
-    %40 = tensor.empty() : tensor<128x64xi1>
+    %52 = arith.addi %arg5, %c63_i32 : i32
+    %53 = arith.divsi %52, %c64_i32_2 : i32
+    %54 = arith.muli %arg7, %c64_i32_2 : i32
+    %55 = tensor.empty() : tensor<64x64xi32>
+    %56 = linalg.fill ins(%54 : i32) outs(%55 : tensor<64x64xi32>) -> tensor<64x64xi32>
+    %57:3 = scf.for %arg9 = %c0_i32 to %53 step %c1_i32 iter_args(%arg10 = %7, %arg11 = %mapped_14, %arg12 = %mapped_22) -> (tensor<128x64xf32>, tensor<128x64xi32>, tensor<64x64xi32>)  : i32 {
+      // 计算 b_ptrs
+      // %arg12 第一轮是 (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+      // 之后会被更新 %arg12 += BLOCk * stride_ak，保证 b_ptrs 的变化
+      %126 = tensor.empty() : tensor<64x64xi64>
+      %127 = linalg.fill ins(%arg1 : i64) outs(%126 : tensor<64x64xi64>) -> tensor<64x64xi64>
+      %128 = tensor.empty() : tensor<64x64xi64>
+      // tt.addptr -> linalg.map{arith.addi}
+      %mapped_69 = linalg.map ins(%127, %arg12 : tensor<64x64xi64>, tensor<64x64xi32>) outs(%128 : tensor<64x64xi64>)
+        (%in: i64, %in_117: i32) {
+          %179 = arith.extsi %in_117 : i32 to i64
+          %c2_i64 = arith.constant 2 : i64
+          %180 = arith.muli %179, %c2_i64 : i64
+          %181 = arith.addi %in, %180 : i64
+          linalg.yield %181 : i64
+        }
 
-    // a_ptr -> !llvm.ptr
-    %41 = llvm.inttoptr %arg0 : i64 to !llvm.ptr
+      // 计算 a_ptrs
+      %129 = tensor.empty() : tensor<128x64xi64>
+      %130 = linalg.fill ins(%arg0 : i64) outs(%129 : tensor<128x64xi64>) -> tensor<128x64xi64>
+      %131 = tensor.empty() : tensor<128x64xi64>
+      %mapped_70 = linalg.map ins(%130, %arg11 : tensor<128x64xi64>, tensor<128x64xi32>) outs(%131 : tensor<128x64xi64>)
+        (%in: i64, %in_117: i32) {
+          %179 = arith.extsi %in_117 : i32 to i64
+          %c2_i64 = arith.constant 2 : i64
+          %180 = arith.muli %179, %c2_i64 : i64
+          %181 = arith.addi %in, %180 : i64
+          linalg.yield %181 : i64
+        }
 
-    %collapsed_13 = tensor.collapse_shape %0 [[0, 1]] : tensor<128x64xf16> into tensor<8192xf16>
-    %expanded_14 = tensor.expand_shape %collapsed_13 [[0, 1]] : tensor<8192xf16> into tensor<8192x1xf16>
-    %42 = tensor.empty() : tensor<64x1xi1>
-    %43 = tensor.empty() : tensor<64x64xi1>
-
-    // %44 即 b_ptr
-    %44 = llvm.inttoptr %arg1 : i64 to !llvm.ptr
-
-    %collapsed_15 = tensor.collapse_shape %1 [[0, 1]] : tensor<64x64xf16> into tensor<4096xf16>
-    %expanded_16 = tensor.expand_shape %collapsed_15 [[0, 1]] : tensor<4096xf16> into tensor<4096x1xf16>
-
-    // for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)), %arg9即k
-    // %arg11和%arg12描述了每次计算的区域（即表示从ptr中取数范围的layout）
-    %45:3 = scf.for %arg9 = %c0_i32 to %36 step %c1_i32 iter_args(%arg10 = %5, %arg11 = %mapped_6, %arg12 = %mapped_12) -> (tensor<128x64xf32>, tensor<128x64xi32>, tensor<64x64xi32>)  : i32 {
-      // %72 = K - k * BLOCK_SIZE_K
-      %71 = arith.muli %arg9, %c64_i32 : i32
-      %72 = arith.subi %arg5, %71 : i32
-
-      // mask，当k满足%72>0时，为true；反之为false
-      %73 = arith.index_cast %72 : i32 to index
-      %74 = arith.maxsi %73, %c0 : index
-      %75 = arith.minsi %74, %c64 : index
-      // 保证块大小 小于BLOCK_SIZE_K
-      %76 = tensor.empty(%75) : tensor<1x?xi1>
-      %77 = linalg.fill ins(%true : i1) outs(%76 : tensor<1x?xi1>) -> tensor<1x?xi1>
-      %78 = arith.subi %c64, %75 : index
-      %79 = linalg_ext.pad ins(%77 : tensor<1x?xi1>) outs(%39 : tensor<1x64xi1>) pvalue(%false : i1) low = [0, 0] high = [0, %78] {
+      // K - k * BLOCK_SIZE_K
+      %132 = arith.muli %arg9, %c64_i32_2 : i32
+      %133 = arith.subi %arg5, %132 : i32
+      %134 = tensor.empty() : tensor<1x64xi32>
+      %135 = linalg.fill ins(%133 : i32) outs(%134 : tensor<1x64xi32>) -> tensor<1x64xi32>
+      %136 = arith.index_cast %133 : i32 to index
+      %c0_71 = arith.constant 0 : index
+      // mask，当k满足%137>0时，为true；反之为false
+      %137 = arith.maxsi %136, %c0_71 : index
+      %c64_72 = arith.constant 64 : index
+      // 保证索引小于BLOCK_SIZE_K
+      %138 = arith.minsi %c64_72, %137 : index
+      %139 = tensor.empty(%138) : tensor<1x?xi1>
+      %true_73 = arith.constant true
+      %140 = linalg.fill ins(%true_73 : i1) outs(%139 : tensor<1x?xi1>) -> tensor<1x?xi1>
+      %false_74 = arith.constant false
+      %141 = tensor.empty() : tensor<1x64xi1>
+      %c0_75 = arith.constant 0 : index
+      %dim_76 = tensor.dim %141, %c0_75 : tensor<1x64xi1>
+      %c0_77 = arith.constant 0 : index
+      %c1_78 = arith.constant 1 : index
+      %142 = arith.addi %c0_77, %c1_78 : index
+      %143 = arith.subi %dim_76, %142 : index
+      %c1_79 = arith.constant 1 : index
+      %dim_80 = tensor.dim %141, %c1_79 : tensor<1x64xi1>
+      %c0_81 = arith.constant 0 : index
+      %144 = arith.addi %c0_81, %138 : index
+      %145 = arith.subi %dim_80, %144 : index
+      // mask的信息: minsi + maxsi -> pad -> broadcasted，然后作为 linalg_ext.gather的mask输入
+      %146 = linalg_ext.pad ins(%140 : tensor<1x?xi1>) outs(%141 : tensor<1x64xi1>) pvalue(%false_74 : i1) low = [%c0_77, %c0_81] high = [%143, %145] {
       ^bb0(%arg13: i1):
         linalg_ext.yield %arg13 : i1
       } -> tensor<1x64xi1>
-      %collapsed_18 = tensor.collapse_shape %79 [[0, 1]] : tensor<1x64xi1> into tensor<64xi1>
-      %broadcasted_19 = linalg.broadcast ins(%collapsed_18 : tensor<64xi1>) outs(%40 : tensor<128x64xi1>) dimensions = [0]
+      // tt.broadcast -> tensor.collapse_shape + linalg.broadcast
+      %collapsed_82 = tensor.collapse_shape %146 [[0, 1]] : tensor<1x64xi1> into tensor<64xi1>
+      %147 = tensor.empty() : tensor<128x64xi1>
+      %broadcasted_83 = linalg.broadcast ins(%collapsed_82 : tensor<64xi1>) outs(%147 : tensor<128x64xi1>) dimensions = [0]
 
       // tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
-      %80 = linalg.fill ins(%c0_i32 : i32) outs(%2 : tensor<128x64xi32>) -> tensor<128x64xi32>
+      %c0_i32_84 = arith.constant 0 : i32
+      %c0_i32_85 = arith.constant 0 : i32
+      %148 = tensor.empty() : tensor<128x64xi32>
+      %149 = linalg.fill ins(%c0_i32_85 : i32) outs(%148 : tensor<128x64xi32>) -> tensor<128x64xi32>
+      %150 = tensor.empty() : tensor<128x64xi32>
       // layout + 0，感觉没啥意义的计算
-      %mapped_20 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%arg11, %80 : tensor<128x64xi32>, tensor<128x64xi32>) outs(%2 : tensor<128x64xi32>)
-      // aux.view 从地址(%41是a_ptr)中获得一个无穷大的memref，然后使用bufferization.to_tensor转为tensor来计算
-      %view_memref_21 = aux.view %41 to offset: [0], sizes: [9223372036854775807], strides: [1] : !llvm.ptr to memref<9223372036854775807xf16>
-      %81 = bufferization.to_tensor %view_memref_21 restrict writable : memref<9223372036854775807xf16>
-      %82 = linalg.fill ins(%cst_0 : f16) outs(%expanded_14 : tensor<8192x1xf16>) -> tensor<8192x1xf16>
-      %collapsed_22 = tensor.collapse_shape %mapped_20 [[0, 1]] : tensor<128x64xi32> into tensor<8192xi32>
-      %expanded_23 = tensor.expand_shape %collapsed_22 [[0, 1]] : tensor<8192xi32> into tensor<8192x1xi32>
-      %collapsed_24 = tensor.collapse_shape %broadcasted_19 [[0, 1]] : tensor<128x64xi1> into tensor<8192xi1>
-      // 带mask的访存行为
-      // mask的信息: cmpi -> pad -> broadcasted -> collapse_shape，然后作为 linalg_ext.gather的输入
-      %83 = linalg_ext.gather dimension_map = [0] ranged_data(false) signed_indice(true) ins(%81, %expanded_23, %collapsed_24 : tensor<9223372036854775807xf16>, tensor<8192x1xi32>, tensor<8192xi1>) outs(%82 : tensor<8192x1xf16>) {
+      %mapped_86 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%arg11, %149 : tensor<128x64xi32>, tensor<128x64xi32>) outs(%150 : tensor<128x64xi32>)
+      // a_ptr -> !llvm.ptr
+      %151 = llvm.inttoptr %arg0 : i64 to !llvm.ptr
+      // aux.view 从地址(%151是a_ptr)中获得一个无穷大的memref，然后使用bufferization.to_tensor转为tensor来计算
+      %view_memref_87 = aux.view %151 to offset: [0], sizes: [9223372036854775807], strides: [1] : !llvm.ptr to memref<9223372036854775807xf16>
+      %152 = bufferization.to_tensor %view_memref_87 restrict writable : memref<9223372036854775807xf16>
+      %collapsed_88 = tensor.collapse_shape %1 [[0, 1]] : tensor<128x64xf16> into tensor<8192xf16>
+      %expanded_89 = tensor.expand_shape %collapsed_88 [[0, 1]] : tensor<8192xf16> into tensor<8192x1xf16>
+      %collapsed_90 = tensor.collapse_shape %mapped_86 [[0, 1]] : tensor<128x64xi32> into tensor<8192xi32>
+      %expanded_91 = tensor.expand_shape %collapsed_90 [[0, 1]] : tensor<8192xi32> into tensor<8192x1xi32>
+      %collapsed_92 = tensor.collapse_shape %broadcasted_83 [[0, 1]] : tensor<128x64xi1> into tensor<8192xi1>
+      // input, indices, mask
+      %153 = linalg_ext.gather dimension_map = [0] ranged_data(false) signed_indice(true) ins(%152, %expanded_91, %collapsed_92 : tensor<9223372036854775807xf16>, tensor<8192x1xi32>, tensor<8192xi1>) outs(%expanded_89 : tensor<8192x1xf16>) {
       ^bb0(%arg13: f16, %arg14: f16):
         linalg_ext.yield %arg13 : f16
       } -> tensor<8192x1xf16>
-      %84 = builtin.unrealized_conversion_cast %83 : tensor<8192x1xf16> to tensor<128x64xf16>
+      %154 = builtin.unrealized_conversion_cast %153 : tensor<8192x1xf16> to tensor<128x64xf16>
 
       // b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
-      %85 = tensor.empty(%75) : tensor<?x1xi1>
-      %86 = linalg.fill ins(%true : i1) outs(%85 : tensor<?x1xi1>) -> tensor<?x1xi1>
-      %87 = linalg_ext.pad ins(%86 : tensor<?x1xi1>) outs(%42 : tensor<64x1xi1>) pvalue(%false : i1) low = [0, 0] high = [%78, 0] {
+      %155 = tensor.empty() : tensor<64x1xi32>
+      %156 = linalg.fill ins(%133 : i32) outs(%155 : tensor<64x1xi32>) -> tensor<64x1xi32>
+      %157 = arith.index_cast %133 : i32 to index
+      %c0_93 = arith.constant 0 : index
+      %158 = arith.maxsi %157, %c0_93 : index
+      %c64_94 = arith.constant 64 : index
+      %159 = arith.minsi %c64_94, %158 : index
+      %160 = tensor.empty(%159) : tensor<?x1xi1>
+      %true_95 = arith.constant true
+      %161 = linalg.fill ins(%true_95 : i1) outs(%160 : tensor<?x1xi1>) -> tensor<?x1xi1>
+      %false_96 = arith.constant false
+      %162 = tensor.empty() : tensor<64x1xi1>
+      %c0_97 = arith.constant 0 : index
+      %dim_98 = tensor.dim %162, %c0_97 : tensor<64x1xi1>
+      %c0_99 = arith.constant 0 : index
+      %163 = arith.addi %c0_99, %159 : index
+      %164 = arith.subi %dim_98, %163 : index
+      %c1_100 = arith.constant 1 : index
+      %dim_101 = tensor.dim %162, %c1_100 : tensor<64x1xi1>
+      %c0_102 = arith.constant 0 : index
+      %c1_103 = arith.constant 1 : index
+      %165 = arith.addi %c0_102, %c1_103 : index
+      %166 = arith.subi %dim_101, %165 : index
+      %167 = linalg_ext.pad ins(%161 : tensor<?x1xi1>) outs(%162 : tensor<64x1xi1>) pvalue(%false_96 : i1) low = [%c0_99, %c0_102] high = [%164, %166] {
       ^bb0(%arg13: i1):
         linalg_ext.yield %arg13 : i1
       } -> tensor<64x1xi1>
-      %collapsed_25 = tensor.collapse_shape %87 [[0, 1]] : tensor<64x1xi1> into tensor<64xi1>
-      %broadcasted_26 = linalg.broadcast ins(%collapsed_25 : tensor<64xi1>) outs(%43 : tensor<64x64xi1>) dimensions = [1]
-      %88 = linalg.fill ins(%c0_i32 : i32) outs(%34 : tensor<64x64xi32>) -> tensor<64x64xi32>
-      %mapped_27 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%arg12, %88 : tensor<64x64xi32>, tensor<64x64xi32>) outs(%34 : tensor<64x64xi32>)
-      %view_memref_28 = aux.view %44 to offset: [0], sizes: [9223372036854775807], strides: [1] : !llvm.ptr to memref<9223372036854775807xf16>
-      %89 = bufferization.to_tensor %view_memref_28 restrict writable : memref<9223372036854775807xf16>
-      %90 = linalg.fill ins(%cst_0 : f16) outs(%expanded_16 : tensor<4096x1xf16>) -> tensor<4096x1xf16>
-      %collapsed_29 = tensor.collapse_shape %mapped_27 [[0, 1]] : tensor<64x64xi32> into tensor<4096xi32>
-      %expanded_30 = tensor.expand_shape %collapsed_29 [[0, 1]] : tensor<4096xi32> into tensor<4096x1xi32>
-      %collapsed_31 = tensor.collapse_shape %broadcasted_26 [[0, 1]] : tensor<64x64xi1> into tensor<4096xi1>
-      %91 = linalg_ext.gather dimension_map = [0] ranged_data(false) signed_indice(true) ins(%89, %expanded_30, %collapsed_31 : tensor<9223372036854775807xf16>, tensor<4096x1xi32>, tensor<4096xi1>) outs(%90 : tensor<4096x1xf16>) {
+      %collapsed_104 = tensor.collapse_shape %167 [[0, 1]] : tensor<64x1xi1> into tensor<64xi1>
+      %168 = tensor.empty() : tensor<64x64xi1>
+      %broadcasted_105 = linalg.broadcast ins(%collapsed_104 : tensor<64xi1>) outs(%168 : tensor<64x64xi1>) dimensions = [1]
+      %c0_i32_106 = arith.constant 0 : i32
+      %c0_i32_107 = arith.constant 0 : i32
+      %169 = tensor.empty() : tensor<64x64xi32>
+      %170 = linalg.fill ins(%c0_i32_107 : i32) outs(%169 : tensor<64x64xi32>) -> tensor<64x64xi32>
+      %171 = tensor.empty() : tensor<64x64xi32>
+      %mapped_108 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%arg12, %170 : tensor<64x64xi32>, tensor<64x64xi32>) outs(%171 : tensor<64x64xi32>)
+      %172 = llvm.inttoptr %arg1 : i64 to !llvm.ptr
+      %view_memref_109 = aux.view %172 to offset: [0], sizes: [9223372036854775807], strides: [1] : !llvm.ptr to memref<9223372036854775807xf16>
+      %173 = bufferization.to_tensor %view_memref_109 restrict writable : memref<9223372036854775807xf16>
+      %collapsed_110 = tensor.collapse_shape %3 [[0, 1]] : tensor<64x64xf16> into tensor<4096xf16>
+      %expanded_111 = tensor.expand_shape %collapsed_110 [[0, 1]] : tensor<4096xf16> into tensor<4096x1xf16>
+      %collapsed_112 = tensor.collapse_shape %mapped_108 [[0, 1]] : tensor<64x64xi32> into tensor<4096xi32>
+      %expanded_113 = tensor.expand_shape %collapsed_112 [[0, 1]] : tensor<4096xi32> into tensor<4096x1xi32>
+      %collapsed_114 = tensor.collapse_shape %broadcasted_105 [[0, 1]] : tensor<64x64xi1> into tensor<4096xi1>
+      %174 = linalg_ext.gather dimension_map = [0] ranged_data(false) signed_indice(true) ins(%173, %expanded_113, %collapsed_114 : tensor<9223372036854775807xf16>, tensor<4096x1xi32>, tensor<4096xi1>) outs(%expanded_111 : tensor<4096x1xf16>) {
       ^bb0(%arg13: f16, %arg14: f16):
         linalg_ext.yield %arg13 : f16
       } -> tensor<4096x1xf16>
-      %92 = builtin.unrealized_conversion_cast %91 : tensor<4096x1xf16> to tensor<64x64xf16>
+      %175 = builtin.unrealized_conversion_cast %174 : tensor<4096x1xf16> to tensor<64x64xf16>
 
       // tt.dot -> linalg.matmul
-      %93 = linalg.matmul {__allow_tf32__} ins(%84, %92 : tensor<128x64xf16>, tensor<64x64xf16>) outs(%arg10 : tensor<128x64xf32>) -> tensor<128x64xf32>
+      %176 = linalg.matmul {__allow_tf32__} ins(%154, %175 : tensor<128x64xf16>, tensor<64x64xf16>) outs(%arg10 : tensor<128x64xf32>) -> tensor<128x64xf32>
 
-      // 更新layout
-      // %3 = BLOCK_SIZE_K * stride_ak(1)
-      %mapped_32 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%arg11, %3 : tensor<128x64xi32>, tensor<128x64xi32>) outs(%2 : tensor<128x64xi32>)
-
-      // %38 = BLOCK_SIZE_K * stride_bk(%arg6)
-      %mapped_33 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%38, %arg12 : tensor<64x64xi32>, tensor<64x64xi32>) outs(%34 : tensor<64x64xi32>)
-      scf.yield %93, %mapped_32, %mapped_33 : tensor<128x64xf32>, tensor<128x64xi32>, tensor<64x64xi32>
+      // 更新layout，%5 = BLOCK_SIZE_K * stride_ak(1)
+      %177 = tensor.empty() : tensor<128x64xi32>
+      %mapped_115 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%arg11, %5 : tensor<128x64xi32>, tensor<128x64xi32>) outs(%177 : tensor<128x64xi32>)
+      %178 = tensor.empty() : tensor<64x64xi32>
+      // %56 = BLOCK_SIZE_K * stride_bk(%arg6)
+      %mapped_116 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%56, %arg12 : tensor<64x64xi32>, tensor<64x64xi32>) outs(%178 : tensor<64x64xi32>)
+      scf.yield %176, %mapped_115, %mapped_116 : tensor<128x64xf32>, tensor<128x64xi32>, tensor<64x64xi32>
     }
+    // c = accumulator.to(tl.float16)
+    %58 = tensor.empty() : tensor<128x64xf16>
+    %mapped_23 = linalg.map { arith.truncf } ins(%57#0 : tensor<128x64xf32>) outs(%58 : tensor<128x64xf16>)
 
-     // c = accumulator.to(tl.float16)
-    %mapped_17 = linalg.map { arith.truncf {overflowFlags = #arith.overflow<none>} } ins(%45#0 : tensor<128x64xf32>) outs(%0 : tensor<128x64xf16>)
+    // offs_cm, offs_cn
+    %expanded_24 = tensor.expand_shape %mapped [[0, 1]] : tensor<128xi32> into tensor<128x1xi32>
+    %59 = tensor.empty() : tensor<128x1xi32>
+    %60 = linalg.fill ins(%arg8 : i32) outs(%59 : tensor<128x1xi32>) -> tensor<128x1xi32>
+    %61 = tensor.empty() : tensor<128x1xi32>
+    %mapped_25 = linalg.map { arith.muli {overflowFlags = #arith.overflow<none>} } ins(%60, %expanded_24 : tensor<128x1xi32>, tensor<128x1xi32>) outs(%61 : tensor<128x1xi32>)
+    %expanded_26 = tensor.expand_shape %mapped_8 [[0, 1]] : tensor<64xi32> into tensor<1x64xi32>
+    %collapsed_27 = tensor.collapse_shape %mapped_25 [[0, 1]] : tensor<128x1xi32> into tensor<128xi32>
+    %62 = tensor.empty() : tensor<128x64xi32>
+    %broadcasted_28 = linalg.broadcast ins(%collapsed_27 : tensor<128xi32>) outs(%62 : tensor<128x64xi32>) dimensions = [1]
+    %63 = tensor.empty() : tensor<128x64xi64>
+    %64 = linalg.fill ins(%arg2 : i64) outs(%63 : tensor<128x64xi64>) -> tensor<128x64xi64>
+    %collapsed_29 = tensor.collapse_shape %expanded_26 [[0, 1]] : tensor<1x64xi32> into tensor<64xi32>
+    %65 = tensor.empty() : tensor<128x64xi32>
+    %broadcasted_30 = linalg.broadcast ins(%collapsed_29 : tensor<64xi32>) outs(%65 : tensor<128x64xi32>) dimensions = [0]
+    %66 = tensor.empty() : tensor<128x64xi32>
+    %mapped_31 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%broadcasted_30, %broadcasted_28 : tensor<128x64xi32>, tensor<128x64xi32>) outs(%66 : tensor<128x64xi32>)
+    %67 = tensor.empty() : tensor<128x64xi64>
+    // c_ptrs = c_ptr + layout_c
+    %mapped_32 = linalg.map ins(%64, %mapped_31 : tensor<128x64xi64>, tensor<128x64xi32>) outs(%67 : tensor<128x64xi64>)
+      (%in: i64, %in_69: i32) {
+        %126 = arith.extsi %in_69 : i32 to i64
+        %c2_i64 = arith.constant 2 : i64
+        %127 = arith.muli %126, %c2_i64 : i64
+        %128 = arith.addi %in, %127 : i64
+        linalg.yield %128 : i64
+      }
 
     // c_mask计算
-    %46 = arith.index_cast %20 : i32 to index
-    %47 = arith.addi %46, %c128 : index
-    %48 = arith.index_cast %arg3 : i32 to index
-    %49 = arith.maxsi %48, %46 : index
-    %50 = arith.minsi %47, %49 : index
-    %51 = arith.subi %50, %46 : index
-    %52 = arith.index_cast %25 : i32 to index
-    %53 = arith.addi %52, %c64 : index
-    %54 = arith.index_cast %arg4 : i32 to index
-    %55 = arith.maxsi %54, %52 : index
-    %56 = arith.minsi %53, %55 : index
-    %57 = arith.subi %56, %52 : index
-    %58 = arith.minsi %51, %c128 : index
-    %59 = arith.maxsi %58, %c0 : index
-    %60 = arith.minsi %57, %c64 : index
-    %61 = arith.maxsi %60, %c0 : index
-    %62 = arith.muli %arg8, %20 : i32
-    %63 = arith.addi %25, %62 : i32
-    %64 = arith.addi %20, %c1_i32 : i32
-    %65 = arith.muli %arg8, %64 : i32
-    %66 = arith.addi %25, %65 : i32
-    %67 = arith.subi %66, %63 : i32
-    %68 = arith.index_cast %67 : i32 to index
-    %69 = arith.index_cast %63 : i32 to index
+    %68 = tensor.empty() : tensor<128x1xi32>
+    %69 = linalg.fill ins(%arg3 : i32) outs(%68 : tensor<128x1xi32>) -> tensor<128x1xi32>
+    %70 = arith.index_cast %22 : i32 to index
+    %c128 = arith.constant 128 : index
+    %71 = arith.addi %c128, %70 : index
+    %72 = arith.index_cast %arg3 : i32 to index
+    %73 = arith.maxsi %72, %70 : index
+    %74 = arith.minsi %71, %73 : index
+    %75 = arith.subi %74, %70 : index
+    %76 = tensor.empty(%75) : tensor<?x1xi1>
+    %true = arith.constant true
+    %77 = linalg.fill ins(%true : i1) outs(%76 : tensor<?x1xi1>) -> tensor<?x1xi1>
+    %false = arith.constant false
+    %78 = tensor.empty() : tensor<128x1xi1>
+    %c0 = arith.constant 0 : index
+    %dim = tensor.dim %78, %c0 : tensor<128x1xi1>
+    %c0_33 = arith.constant 0 : index
+    %79 = arith.addi %c0_33, %75 : index
+    %80 = arith.subi %dim, %79 : index
+    %c1 = arith.constant 1 : index
+    %dim_34 = tensor.dim %78, %c1 : tensor<128x1xi1>
+    %c0_35 = arith.constant 0 : index
+    %c1_36 = arith.constant 1 : index
+    %81 = arith.addi %c0_35, %c1_36 : index
+    %82 = arith.subi %dim_34, %81 : index
+    %83 = linalg_ext.pad ins(%77 : tensor<?x1xi1>) outs(%78 : tensor<128x1xi1>) pvalue(%false : i1) low = [%c0_33, %c0_35] high = [%80, %82] {
+    ^bb0(%arg9: i1):
+      linalg_ext.yield %arg9 : i1
+    } -> tensor<128x1xi1>
+    %84 = tensor.empty() : tensor<1x64xi32>
+    %85 = linalg.fill ins(%arg4 : i32) outs(%84 : tensor<1x64xi32>) -> tensor<1x64xi32>
+    %86 = arith.index_cast %31 : i32 to index
+    %c64 = arith.constant 64 : index
+    %87 = arith.addi %c64, %86 : index
+    %88 = arith.index_cast %arg4 : i32 to index
+    %89 = arith.maxsi %88, %86 : index
+    %90 = arith.minsi %87, %89 : index
+    %91 = arith.subi %90, %86 : index
+    %92 = tensor.empty(%91) : tensor<1x?xi1>
+    %true_37 = arith.constant true
+    %93 = linalg.fill ins(%true_37 : i1) outs(%92 : tensor<1x?xi1>) -> tensor<1x?xi1>
+    %false_38 = arith.constant false
+    %94 = tensor.empty() : tensor<1x64xi1>
+    %c0_39 = arith.constant 0 : index
+    %dim_40 = tensor.dim %94, %c0_39 : tensor<1x64xi1>
+    %c0_41 = arith.constant 0 : index
+    %c1_42 = arith.constant 1 : index
+    %95 = arith.addi %c0_41, %c1_42 : index
+    %96 = arith.subi %dim_40, %95 : index
+    %c1_43 = arith.constant 1 : index
+    %dim_44 = tensor.dim %94, %c1_43 : tensor<1x64xi1>
+    %c0_45 = arith.constant 0 : index
+    %97 = arith.addi %c0_45, %91 : index
+    %98 = arith.subi %dim_44, %97 : index
+    %99 = linalg_ext.pad ins(%93 : tensor<1x?xi1>) outs(%94 : tensor<1x64xi1>) pvalue(%false_38 : i1) low = [%c0_41, %c0_45] high = [%96, %98] {
+    ^bb0(%arg9: i1):
+      linalg_ext.yield %arg9 : i1
+    } -> tensor<1x64xi1>
+    %collapsed_46 = tensor.collapse_shape %83 [[0, 1]] : tensor<128x1xi1> into tensor<128xi1>
+    %100 = tensor.empty() : tensor<128x64xi1>
+    %broadcasted_47 = linalg.broadcast ins(%collapsed_46 : tensor<128xi1>) outs(%100 : tensor<128x64xi1>) dimensions = [1]
+    %collapsed_48 = tensor.collapse_shape %99 [[0, 1]] : tensor<1x64xi1> into tensor<64xi1>
+    %101 = tensor.empty() : tensor<128x64xi1>
+    %broadcasted_49 = linalg.broadcast ins(%collapsed_48 : tensor<64xi1>) outs(%101 : tensor<128x64xi1>) dimensions = [0]
+    %102 = tensor.empty() : tensor<128x64xi1>
+    %mapped_50 = linalg.map { arith.andi } ins(%broadcasted_47, %broadcasted_49 : tensor<128x64xi1>, tensor<128x64xi1>) outs(%102 : tensor<128x64xi1>)
+    %103 = arith.index_cast %22 : i32 to index
+    %c128_51 = arith.constant 128 : index
+    %104 = arith.addi %c128_51, %103 : index
+    %105 = arith.index_cast %arg3 : i32 to index
+    %106 = arith.maxsi %105, %103 : index
+    %107 = arith.minsi %104, %106 : index
+    %108 = arith.subi %107, %103 : index
+    %109 = arith.index_cast %31 : i32 to index
+    %c64_52 = arith.constant 64 : index
+    %110 = arith.addi %c64_52, %109 : index
+    %111 = arith.index_cast %arg4 : i32 to index
+    %112 = arith.maxsi %111, %109 : index
+    %113 = arith.minsi %110, %112 : index
+    %114 = arith.subi %113, %109 : index
+    %c128_53 = arith.constant 128 : index
+    %115 = arith.minsi %108, %c128_53 : index
+    %c0_54 = arith.constant 0 : index
+    %116 = arith.maxsi %115, %c0_54 : index
+    %c64_55 = arith.constant 64 : index
+    %117 = arith.minsi %c64_55, %114 : index
+    %c0_56 = arith.constant 0 : index
+    %118 = arith.maxsi %117, %c0_56 : index
+    %c0_i32_57 = arith.constant 0 : i32
+    %c0_i32_58 = arith.constant 0 : i32
+    %119 = tensor.empty() : tensor<128x64xi32>
+    %120 = linalg.fill ins(%c0_i32_58 : i32) outs(%119 : tensor<128x64xi32>) -> tensor<128x64xi32>
+    %121 = tensor.empty() : tensor<128x64xi32>
+    %mapped_59 = linalg.map { arith.addi {overflowFlags = #arith.overflow<none>} } ins(%mapped_31, %120 : tensor<128x64xi32>, tensor<128x64xi32>) outs(%121 : tensor<128x64xi32>)
+    %c0_60 = arith.constant 0 : index
+    %c1_61 = arith.constant 1 : index
+    %c0_62 = arith.constant 0 : index
+    %c0_63 = arith.constant 0 : index
+    %extracted = tensor.extract %mapped_59[%c0_62, %c0_63] : tensor<128x64xi32>
+    %extracted_64 = tensor.extract %mapped_59[%c1_61, %c0_63] : tensor<128x64xi32>
+    %122 = arith.subi %extracted_64, %extracted : i32
+    %123 = arith.index_cast %122 : i32 to index
+    %c1_65 = arith.constant 1 : index
+    %c0_66 = arith.constant 0 : index
+    %c0_67 = arith.constant 0 : index
+    %extracted_68 = tensor.extract %mapped_59[%c0_66, %c0_67] : tensor<128x64xi32>
+    %124 = arith.index_cast %extracted_68 : i32 to index
 
     // tl.store
-    %70 = llvm.inttoptr %arg2 : i64 to !llvm.ptr
-    %view_memref = aux.view %70 to offset: [%69], sizes: [%59, %61], strides: [%68, 1] : !llvm.ptr to memref<?x?xf16, #map>
-    %extracted_slice = tensor.extract_slice %mapped_17[0, 0] [%59, %61] [1, 1] : tensor<128x64xf16> to tensor<?x?xf16>
+    %125 = llvm.inttoptr %arg2 : i64 to !llvm.ptr
+    %view_memref = aux.view %125 to offset: [%124], sizes: [%116, %118], strides: [%123, 1] : !llvm.ptr to memref<?x?xf16, #map>
+    %extracted_slice = tensor.extract_slice %mapped_23[0, 0] [%116, %118] [1, 1] : tensor<128x64xf16> to tensor<?x?xf16>
     bufferization.materialize_in_destination %extracted_slice in writable %view_memref : (tensor<?x?xf16>, memref<?x?xf16, #map>) -> ()
     return
   }
@@ -1202,18 +1392,8 @@ lib/Conversion
 ArithToLinalg
 MathToLinalg
 TritonToLinalg
-TritonToTensor(其中只包含了 tt.cat 到 tensor.insert_slice 的转换，本质上也是 tt.ops 的下降，所以就放在 TritonToLinalg 一起讲)
+TritonToTensor(目前只有 tt.cat 到 tensor.insert_slice 的转换，本质上也是 tt.ops 的下降，所以就放在 TritonToLinalg 一起讲)
 ```
-
-op-to-op conversion summary:
-
-| src     | target        |
-| -------- | ------------- |
-| arith.ops 标量计算   | arith.ops 标量计算      |
-| arith.constant表示的tensor      | linalg.fill      |
-| arith.ops / math.ops tensor计算   | linalg.map{arith.ops}  / linalg.map{math.ops}    |
-| tt.cat  |   tensor.insert_slice   |
-
 
 ### arith.ops / math.ops
 
@@ -1280,6 +1460,24 @@ arith.constant dense<0.0> : tensor<axf32>
 lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
 ```
 
+可以注意到，许多pattern的代码都有使用 `TypeConverter` 修改 `ResultType` 的行为。
+
+```cpp
+auto type = typeConverter->convertType(op.getResult().getType());
+if (!type)
+  return failure();
+```
+
+若输入的 `Type` 是 `triton::PointerType` 时，这段代码会将其修改为 `IntegerType(64)`，将指针等同为`i64`类型（后续直接从该i64表示的地址中取数），即
+
+```bash
+!tt.ptr<f32> -> i64
+!tt.ptr<!tt.ptr<f16>> -> i64
+tensor<256x!tt.ptr<f32>> -> tensor<256xi64>
+```
+
+> 虽然这样不管 `!tt.ptr` 中的 `elemType` 直接转为 `i64` 导致现在损失了 `elemType` 信息，但是在 `LoadStoreConversion` 时会直接使用 `tt.load` 的 `resultType` 的 `elemType`。
+
 - tt.broadcast
 
 `tt.broadcast` 会改变 `dimSize` 为 1 的维度，这和 `linalg.broadcast` 会同时扩展维度的行为不一致，所以需要先使用 `tensor.collapse_shape` fold 掉 `unitDim`，再用 `linalg.broadcast` 扩展到对应 resultType。
@@ -1303,6 +1501,143 @@ tt.broadcast %arg0 : tensor<1x32x1xf32> -> tensor<2x32x4xf32>
 %fill = linalg.fill ins(%arg0: i32) outs(%empty : tensor<1024xi32>) -> tensor<1024xi32>
 ```
 
+- tt.expand_dims
+
+`tt.expand_dims` 用来扩展维度，有一个输入来指定需要扩展的维度，一次仅扩展1维，扩展后的维度dimSize为1。
+
+```mlir
+%expand = tt.expand_dims %arg0 {axis = 2: i32} : tensor<8x4xi32> -> tensor<8x4x1xi32>
+->
+%expand = tensor.expand_shape %arg0 [[0], [1, 2]] : tensor<8x4xi32> into tensor<8x4x2xi32>
+```
+
+- tt.addptr
+
+`tt.addptr` 用来实现指针的加法操作，`lhs` 为 `ptr`，`rhs` 为 `offset`。operand的shape相同，可以为rankedTensor(下降为`linalg.map{addi}`)或scalar(下降为`arith.addi`)。`offset` 可以理解为是数组的下标，以标量相加为例， `ptr` 是取数的地址， `%offset` 是取的数个数。
+
+当ptr为标量时：
+
+```mlir
+%scalar_addptr = tt.addptr %arg0, %arg1: !tt.ptr<f16>, i32
+->
+%0 = arith.extsi %arg1 : i32 to i64
+// 相当于取了 %arg1 个类型为 f16 的数据，所以需要乘以2(=16/8)对齐地址
+%c2_i64 = arith.constant 2 : i64
+%1 = arith.muli %0, %c2_i64 : i64
+%2 = arith.addi %arg0, %1 : i64
+
+%tensor_addptr = tt.addptr %arg0, %arg1: tensor<256x!tt.ptr<f32>>, tensor<256xi32>
+->
+%mapped = linalg.map ins(%arg0, %arg1 : tensor<256xi64>, tensor<256xi32>) outs(%empty : tensor<256xi64>)
+  (%in: i64, %in_0: i32) {
+    %0 = arith.extsi %in_0 : i32 to i64
+    %c4_i64 = arith.constant 4 : i64
+    %1 = arith.muli %0, %c4_i64 : i64
+    %2 = arith.addi %in, %1 : i64
+    linalg.yield %2 : i64
+  }
+```
+
+当ptr为rankedTensor时，我们构造以下计算 `b_ptrs` 的ir，下降得到：
+
+```mlir
+// b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+tt.func @b_ptrs(%b_ptr: !tt.ptr<f16>, %offs_bn: tensor<64xi32>, %stride_bk: i32) {
+  %0 = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32>
+  %1 = tt.expand_dims %0 {axis = 1 : i32} : tensor<64xi32> -> tensor<64x1xi32>
+  %2 = tt.splat %stride_bk : i32 -> tensor<64x1xi32>
+  %3 = arith.muli %1, %2 : tensor<64x1xi32>
+  %4 = tt.expand_dims %offs_bn {axis = 0 : i32} : tensor<64xi32> -> tensor<1x64xi32>
+  %5 = tt.broadcast %3 : tensor<64x1xi32> -> tensor<64x64xi32>
+  %6 = tt.broadcast %4 : tensor<1x64xi32> -> tensor<64x64xi32>
+  %7 = arith.addi %5, %6 : tensor<64x64xi32>
+  %8 = tt.splat %b_ptr : !tt.ptr<f16> -> tensor<64x64x!tt.ptr<f16>>
+  %9 = tt.addptr %8, %7 : tensor<64x64x!tt.ptr<f16>>, tensor<64x64xi32>
+  tt.return
+}
+->
+其中 `tt.addptr` 下降得到的部分ir是
+%9 = linalg.fill ins(%arg0 : i64) outs(%8 : tensor<64x64xi64>) -> tensor<64x64xi64>
+%10 = tensor.empty() : tensor<64x64xi64>
+%mapped_4 = linalg.map ins(%9, %mapped_3 : tensor<64x64xi64>, tensor<64x64xi32>) outs(%10 : tensor<64x64xi64>)
+  (%in: i64, %in_5: i32) {
+    %11 = arith.extsi %in_5 : i32 to i64
+    %c2_i64 = arith.constant 2 : i64
+    %12 = arith.muli %11, %c2_i64 : i64
+    %13 = arith.addi %in, %12 : i64
+    linalg.yield %13 : i64
+  }
+```
+
+- tt.make_range
+
+`tt.make_range` 是由 `tl.arange` 下降来的，表示一个连续数组`[start, end)`。从 `tt.make_range`可以直接获取到 `start`(op.getStart()) 和 `end`(op.getEnd()) 值
+
+```mlir
+%range = tt.make_range {end = 129 : i32, start = 1 : i32} : tensor<128xi32>
+->
+%c1_i32 = arith.constant 1 : i32
+%c129_i32 = arith.constant 129 : i32
+%range = linalg_ext.make_range {operandSegmentSizes = array<i32: 2, 1>} ins(%c1_i32, %c129_i32 : i32, i32) outs(%0 : tensor<128xi32>) -> tensor<128xi32>
+```
+
+- tt.dot
+
+`tt.dot` 就是矩阵乘，从 `tt.dot` 中使用 `getA(), getB(), getC()` 就能获取到 `input, filter, bias` ，然后直接构造 `linalg.matmul` 即可。
+
+```mlir
+%dot =  tt.dot %input, %filter, %bias, inputPrecision = tf32 : tensor<128x64xf16> * tensor<64x64xf16> -> tensor<128x64xf32>
+->
+%0 = linalg.matmul ins(%input, %filter : tensor<128x64xf16>, tensor<64x64xf16>) outs(%bias : tensor<128x64xf16>) -> tensor<128x64xf16>
+```
+
+- tt.bitcast
+
+`tt.bitcast` 用于在同bit位下cast数据类型(e.g. f16->bf16)。直接下降到 `arith.bitcast`，若operand是tensor就下降为 `linalg.map{arith.bitcast}`。
+
+```mlir
+%bitcast = tt.bitcast %arg0 : tensor<128xi32> -> tensor<128xf32>
+->
+%bitcast = linalg.map { arith.bitcast } ins(%arg0 : tensor<128xi32>) outs(%0 : tensor<128xf32>)
+```
+
+- tt.reduce
+
+`tt.reduce` 用于 reduce 某一个维度。由于 `linalg.reduce` 的 `init` 也参与运算，所以就需要从 `tt.reduce` 中获得这个 `init`。使用 `arith::getNeutralElement` 去获取 `tt.reduce` 内进行计算的 `payloadOp` 的 `getNeutralElement` 作为 `linalg.fill` 的 fillVal，如果没有，那么则将 `tt.reduce`的第一个值抽出来单独计算作为 init。`TritonReducePattern`算其中比较复杂的conversion，推荐大家阅读下，尤其是`corner case`的处理。
+
+```mlir
+%0 = "tt.reduce" (%arg0) ({
+^bb0(%arg1: i32, %arg2: i32):
+  %1 = arith.subi %arg1, %arg2 : i32
+  tt.reduce.return %1 : i32
+}) {axis = 1 : i32} : (tensor<1x2048xi32>) -> tensor<1xi32>
+->
+// 由于 `arith::getNeutralElement` 没从 `arith.subi` 中获取到期望的 fillVal
+// 那么则extract出reduction轴上的第一个值作为linalg.reduce的init
+%extracted_slice = tensor.extract_slice %arg0[0, 0] [1, 1] [1, 1] : tensor<1x2048xi32> to tensor<1x1xi32>
+%collapsed = tensor.collapse_shape %extracted_slice [[0, 1]] : tensor<1x1xi32> into tensor<1xi32>
+%extracted_slice_0 = tensor.extract_slice %arg0[0, 1] [1, 2047] [1, 1] : tensor<1x2048xi32> to tensor<1x2047xi32>
+%reduced = linalg.reduce ins(%extracted_slice_0 : tensor<1x2047xi32>) outs(%collapsed : tensor<1xi32>) dimensions = [1]
+  (%in: i32, %init: i32) {
+    %0 = arith.subi %in, %init : i32
+    linalg.yield %0 : i32
+  }
+```
+
+- tt.extern_elementwise
+
+调用额外函数(libdevice)。自定义了 `linalg_ext.libdevice_call` 和 `linalg_ext.scalar_libdevice_call
+
+```mlir
+%0 = tt.extern_elementwise %arg0, %arg1 {libname = "a",  libpath = "b",  symbol = "__cn_vector_mul_f32_rn", pure = true} : (tensor<16x16xf32>, tensor<16x16xf32>) -> (tensor<16x16xf32>)
+->
+%1 = linalg_ext.libdevice_call ins(%arg0, %arg1 : tensor<16x16xf32>, tensor<16x16xf32>) outs(%0 : tensor<16x16xf32>) symbol = "__cn_vector_mul_f32_rn" -> tensor<16x16xf32>
+```
+
+- tt.int_to_ptr / tt.ptr_to_int
+
+`tt.int_to_ptr` 和 `tt.ptr_to_int` 分别是用来实现 int64-to-pointer 和 pointer-to-int 的，但 conversion 的每一个pattern都会使用 `TypeConverter` 来将 `!tt.ptr` 转为 `int64`，这两个op也就没了作用。都直接使用它们的第一个 operand 来替换 `rewriter.replaceOp(op, adaptor.getOperands()[0]);`。
+
 - tt.cat
 
 `tt.cat` 一般在最高维进行 concatenate，而且两个 operand 的type完全相同(td中标明了`SameTypeOperands`)，所以只需要用两个 `tensor.insert_slice` 拼接即可。第一个的`tensor.insert_slice` 的 offset 为0，第二个的 offset 为 operand_shape[0]。
@@ -1320,6 +1655,54 @@ tt.broadcast %arg0 : tensor<1x32x1xf32> -> tensor<2x32x4xf32>
 ### ptr
 
 `blockarg` -> `llvm.inttooptr` -> `aux.view` -> `bufferization.to_tensor` -> `tensor`
+
+
+
+### summary
+
+依然以上文 `tutorials/03-matrix-multiplication.py` 的例子作总结：
+
+输入参数部分的对应如下，需要注意 `tl.constexpr` 的数值只是某一个(tuning config下) kernel 的编译的结果。
+
+| matmul_kernel param | tt.func blockarg |
+|---------------------|----------------|
+| a_ptr, b_ptr, c_ptr | %arg0, %arg1, %arg2 |
+| M, N, K             | %arg3, %arg4, %arg5 |
+| stride_am, stride_ak| %arg6, 1          |
+| stride_bk, stride_bn| %arg7, 1          |
+| stride_cm, stride_cn| %arg8, 1          |
+| BLOCK_SIZE_M,  BLOCK_SIZE_N, BLOCK_SIZE_K | 128, 64, 64 |
+| GROUP_SIZE_M        | 8      |
+| ACTIVATION          | None      |
+
+
+op-to-op conversion summary:
+
+尽量在 `arith`, `math`, `linalg`, `tensor` 中找到能承接 `tt.ops` 到op，`arith.ops`, `math.ops` 只处理标量，如果是op操作tensor，那下降到 `linalg.map{arith.ops/math.ops}`。
+
+| ttir     | linalg-on-tensor        |
+| -------- | ------------- |
+| tt.get_program_id x : i32  |  tt.get_program_id x : i32 |
+| arith.ops 标量计算   | arith.ops 标量计算      |
+| tt.make_range      | linalg.fill      |
+| arith.ops / math.ops tensor计算   | linalg.map{arith.ops}  / linalg.map{math.ops}    |
+| tt.cat  |   tensor.insert_slice   |
+
+
+
+代码中构造 `tensor.empty` 作为输出时，很多都是使用
+```cpp
+Value init = rewriter.create<tensor::EmptyOp>(loc, resultTy.getShape(),
+                                              resultTy.getElementType());
+```
+
+但这都要求 `resultTy` 是 `static shape` 的 `RankedTensorType`，应该都改用 `lib/Dialect/Utils/ShapeUtils.cpp` 中的 `getDim` 函数，不然遇见 `dynamic shape` 就会 `coredump`.
+
+```cpp
+auto initDims = triton::getDims(rewriter, loc, resultVal);
+Value init =
+rewriter.create<tensor::EmptyOp>(loc, initDims, resultTy.getElementType());
+```
 
 
 

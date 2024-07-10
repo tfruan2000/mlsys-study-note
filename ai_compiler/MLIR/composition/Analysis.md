@@ -1,8 +1,28 @@
 # [MLIR]Analysis
 
-## dataflow framework
+## Analisys Manager
 
+```bash
+mlir/include/mlir/Pass/AnalysisManager.h
+```
+`Analyses` 是独立于其他设施的数据结构，可以将相关的信息 perserve 起来。
+
+例如 `Transforms/CSE.cpp` 中就将一些 `Analyses` 信息保存给下一次分析。
 ```cpp
+  // If there was no change to the IR, we mark all analyses as preserved.
+  if (!changed)
+    return markAllAnalysesPreserved();
+
+  // We currently don't remove region operations, so mark dominance as
+  // preserved.
+  markAnalysesPreserved<DominanceInfo, PostDominanceInfo>();
+```
+
+但使用 `markAnalysesPreserved` 在 `pass` 间传递信息的行为是不可取的，因为该功能只是为了减少编译时间，要在 `pass` 间传递信息最合理的方法是设计一套 `Attribute` 挂在 op上。
+
+## Dataflow Framework
+
+```bash
 mlir/include/mlir/Analysis/DataFlowFramework.h
 mlir/lib/Analysis/DataFlowFramework.cpp
 ```
