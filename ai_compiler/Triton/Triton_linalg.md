@@ -2,6 +2,10 @@
 
 最近尝试了一下 `Triton-Linalg` ，一个开源的工作，支持了几乎所有 `triton` 原语到 `linalg-on-tensor` 的下降流程，在这里记录一下自己的学习过程。项目仓库： [Triton-Linalg 仓库](​github.com/Cambricon/triton-linalg/tree/master)。
 
+不看长文请调转：
+
+https://zhuanlan.zhihu.com/p/706401510
+
 这将是一篇长文（车轱辘话全集），大该有以下部分，但是大体还在施工～
 
 - [x] 介绍（背景、优缺点、和triton-shared的区别）
@@ -11,7 +15,7 @@
   - [x] Auxiliar
   - [x] LinalgExt
 - [ ] Analysis
-- [ ] Conversion
+- [ ] Conversion+
 - [ ] Pipeline
 
 关于 Triton-Linalg 项目技术细节 主要还是在后三节 `Analysis` , `Conversion` 以及 `Pipeline`，但目前还没整理好（还没时间看qwq），闲暇时再继续总结下。本人知识深度有限，还望大家指正~
@@ -456,14 +460,15 @@ module {
 终于，linalg登场了，看懂这一步的ir，才好理解triton-linalg的主要工作。我们继续lower到linalg上，一眼 `tensor + linalg + bufferization`，以及两个该仓库自定义的dialect (aux + linalg_ext)，后节会讲讲。
 
 总结一下，在这段ir中（**根据连续性情况，load/store指令会下降出不同的结果**）有以下对应关系：
+
 | ttir     | linalg        |
 | -------- | ------------- |
-| arith.ops 标量计算   | arith.ops 标量计算      |
-| arith.constant表示的tensor      | linalg.fill      |
-| tt.make_range   | linalg_ext.make_range       |
-| arith.ops tensor计算   | linalg.map{arith.ops}      |
-| tt.broadcast  | linalg.broadcast      |
-| tt.addptr    | linalg.map{arith.muli+arith.addi}  |
+| arith.ops 标量计算 | arith.ops 标量计算 |
+| arith.constant表示的tensor | linalg.fill |
+| tt.make_range | linalg_ext.make_range |
+| arith.ops tensor计算 | linalg.map{arith.ops} |
+| tt.broadcast | linalg.broadcast |
+| tt.addptr | linalg.map{arith.muli+arith.addi} |
 | tt.dot | linalg.matmul |
 | 可变mask中的信息 mul + sub + cmp |  可变mask中的信息 mul + sub + fill + pad |
 | tt.load | llvm.inttoptr + aux.view + bufferization.to_tensor + linalg_ext.gather |
@@ -1225,6 +1230,41 @@ gather 是一种将非连续内存位置的数据收集到连续内存位置的�
 
 [TODO: 解释 gather 的计算机制，或许可以参考下[stablehlo.gather](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#gather)]
 
+```mlir
+func.func @standard_gather(%operand: tensor<1x4x8xf32>, %start_indices: tensor<1x8x2xi32>) -> tensor<1x8x8xf32> {
+  %collapsed = tensor.collapse_shape %start_indices [[0, 1], [2]] : tensor<1x8x2xi32> into tensor<8x2xi32>
+  %0 = "mhlo.gather"(%operand, %collapsed) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [1, 2, 3],
+      start_index_map = [0, 1],
+      index_vector_dim = 1
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<1x4x8xf32>, tensor<8x2xi32>) -> tensor<8x1x1x8xf32>
+  %collapsed_0 = tensor.collapse_shape %0 [[0], [1, 2, 3]] : tensor<8x1x1x8xf32> into tensor<8x8xf32>
+  %expanded = tensor.expand_shape %collapsed_0 [[0, 1], [2]] : tensor<8x8xf32> into tensor<1x8x8xf32>
+  return %expanded : tensor<1x8x8xf32>
+}
+
+%operand表示输入；%start_indices表示开始索引张量，提供了%operand中进行切片的开始位置
+
+dimension_number属性定义了如何映射索引和维度：
+
+collapsed_slice_dim表示再输出中被折叠（即忽略）的切片维度
+index_vector_dim表示在%start_indices中，哪一个维度表示索引向量的维度, 1意味着每行%start_indices的数据代表一个索引向量
+offset_dims表示在输出张量中未折叠的维度的顺序。这里是[1, 2]，意味着切片后的数据将填充到输出张量的第1维和第2维
+start_index_map：指定如何映射%start_indices的列到%operand的维度，这里[0, 1]表示%start_indices的第0列对应%operand的第0维，以此类推。
+indices_are_sorted：这个属性指示开始索引是否已经排序，这里是false，意味着不假设索引是有序的。
+
+slice_sizes：指定每个维度上的切片大小
+
+（1）operand.rank = offset_dims.size + collapsed_slice_dims.size
+
+（2）slice_sizes.size = operand.rank
+
+```
+
 - linalg_ext.scatter
 
 `scatter` 是一种将连续内存位置的数据分散到非连续内存位置的操作。与 `linalg_ext.gather` 相似（gather和scatter可以看作是语义相反的两个操作），`linalg_ext.scatter` 的输入一般为 2个(update, indices) 或 3个(update, indices, mask)。
@@ -1478,6 +1518,11 @@ tensor<256x!tt.ptr<f32>> -> tensor<256xi64>
 
 > 虽然这样不管 `!tt.ptr` 中的 `elemType` 直接转为 `i64` 导致现在损失了 `elemType` 信息，但是在 `LoadStoreConversion` 时会直接使用 `tt.load` 的 `resultType` 的 `elemType`。
 
+
+- tt.func / tt.return / tt.call
+
+直接下降到 `FuncDialect` 中对应的 `func.func`, `func.return`, `func.call` op。
+
 - tt.broadcast
 
 `tt.broadcast` 会改变 `dimSize` 为 1 的维度，这和 `linalg.broadcast` 会同时扩展维度的行为不一致，所以需要先使用 `tensor.collapse_shape` fold 掉 `unitDim`，再用 `linalg.broadcast` 扩展到对应 resultType。
@@ -1601,9 +1646,41 @@ tt.func @b_ptrs(%b_ptr: !tt.ptr<f16>, %offs_bn: tensor<64xi32>, %stride_bk: i32)
 %bitcast = linalg.map { arith.bitcast } ins(%arg0 : tensor<128xi32>) outs(%0 : tensor<128xf32>)
 ```
 
+- tt.extern_elementwise
+
+调用额外函数(libdevice)。自定义了 `linalg_ext.libdevice_call` 和 `linalg_ext.scalar_libdevice_call
+
+```mlir
+%0 = tt.extern_elementwise %arg0, %arg1 {libname = "a",  libpath = "b",  symbol = "__cn_vector_mul_f32_rn", pure = true} : (tensor<16x16xf32>, tensor<16x16xf32>) -> (tensor<16x16xf32>)
+->
+%1 = linalg_ext.libdevice_call ins(%arg0, %arg1 : tensor<16x16xf32>, tensor<16x16xf32>) outs(%0 : tensor<16x16xf32>) symbol = "__cn_vector_mul_f32_rn" -> tensor<16x16xf32>
+```
+
+- tt.int_to_ptr / tt.ptr_to_int
+
+`tt.int_to_ptr` 和 `tt.ptr_to_int` 分别是用来实现 int64-to-pointer 和 pointer-to-int 的，但 conversion 的每一个pattern都会使用 `TypeConverter` 来将 `!tt.ptr` 转为 `int64`，这两个op也就没了作用。都直接使用它们的第一个 operand 来替换 `rewriter.replaceOp(op, adaptor.getOperands()[0]);`。
+
+- tt.trans
+
+`tt.trans` 用来对 tensor 进行转置，其 `op.getOrder()` 得到的值直接作为 `linalg.transpose` 的 permutation 参数。
+
+```mlir
+%trans = tt.trans %arg0 {order=array<i32: 1, 0>} : tensor<16x32xf32> -> tensor<32x16xf32>
+->
+%trans = linalg.transpose ins(%arg0 : tensor<16x32xf32>) outs(%empty : tensor<32x16xf32>) permutation = [1, 0]
+```
+
+- tt.print / tt.assert
+
+`tt.ptint` 和 `tt.assert` 都是 debug 时用的算子，分别转为自定义的 `aux.print` 或 `aux.scalar.print` 和 `linalg_ext.assert`。
+
+对于 `tt.print` 算子，下降时一定会产生三个 `aux.scalar.print` 用来打印三维 pid 信息。
+
 - tt.reduce
 
-`tt.reduce` 用于 reduce 某一个维度。由于 `linalg.reduce` 的 `init` 也参与运算，所以就需要从 `tt.reduce` 中获得这个 `init`。使用 `arith::getNeutralElement` 去获取 `tt.reduce` 内进行计算的 `payloadOp` 的 `getNeutralElement` 作为 `linalg.fill` 的 fillVal，如果没有，那么则将 `tt.reduce`的第一个值抽出来单独计算作为 init。`TritonReducePattern`算其中比较复杂的conversion，推荐大家阅读下，尤其是`corner case`的处理。
+`tt.reduce` 用于 reduce 某一个维度。由于 `linalg.reduce` 的 `init` 也参与运算，所以就需要从 `tt.reduce` 中获得这个 `init`。使用 `arith::getNeutralElement` 去获取 `tt.reduce` 内进行计算的 `payloadOp` 的 `getNeutralElement` 作为 `linalg.fill` 的 fillVal，如果没有，那么则将 `tt.reduce`的第一个值抽出来单独计算作为 init。（因为reduce内的计算可能受初值的影响，所以不能简单地以0为初值）
+
+`TritonReducePattern`算其中比较复杂的conversion，推荐大家阅读下，尤其是`corner case`的处理。
 
 ```mlir
 %0 = "tt.reduce" (%arg0) ({
@@ -1624,19 +1701,30 @@ tt.func @b_ptrs(%b_ptr: !tt.ptr<f16>, %offs_bn: tensor<64xi32>, %stride_bk: i32)
   }
 ```
 
-- tt.extern_elementwise
+- tt.scan
 
-调用额外函数(libdevice)。自定义了 `linalg_ext.libdevice_call` 和 `linalg_ext.scalar_libdevice_call
+`tt.scan` 操作对输入序列的每个元素应用某种二元操作（如加法或乘法），并产生一个新的序列，其中每个元素是输入序列中所有前面元素的累积结果。和 `tt.reduce` 下降时相同，将第一个数 `tensor.extract_slice` 出来作为 `linalg_ext.scan` 的 init。最后再将 `linalg_ext.scan` 的结果和 init 通过 `tensor.insert_slice` 结合起来。
 
-```mlir
-%0 = tt.extern_elementwise %arg0, %arg1 {libname = "a",  libpath = "b",  symbol = "__cn_vector_mul_f32_rn", pure = true} : (tensor<16x16xf32>, tensor<16x16xf32>) -> (tensor<16x16xf32>)
+以加法为例：
+
+```bash
+%0 = "tt.scan" (%arg0) ({
+ ^bb0(%arg1: i32, %arg2: i32):
+   %1 = arith.addi %arg1, %arg2 : i32
+   tt.scan.return %1 : i32
+ }) {axis = 1 : i32, reverse = false} : (tensor<1x2048xi32>) -> tensor<1x2048xi32>
 ->
-%1 = linalg_ext.libdevice_call ins(%arg0, %arg1 : tensor<16x16xf32>, tensor<16x16xf32>) outs(%0 : tensor<16x16xf32>) symbol = "__cn_vector_mul_f32_rn" -> tensor<16x16xf32>
+%extracted_slice = tensor.extract_slice %arg0[0, 1] [1, 2047] [1, 1] : tensor<1x2048xi32> to tensor<1x2047xi32>
+%0 = tensor.empty() : tensor<1x2047xi32>
+%extracted_slice_0 = tensor.extract_slice %arg0[0, 0] [1, 1] [1, 1] : tensor<1x2048xi32> to tensor<1x1xi32>
+%collapsed = tensor.collapse_shape %extracted_slice_0 [[0, 1]] : tensor<1x1xi32> into tensor<1xi32>
+%scanned:2 = linalg_ext.scan ins(%extracted_slice : tensor<1x2047xi32>) outs(%0, %collapsed : tensor<1x2047xi32>, tensor<1xi32>) dimensions = [1] reverse = false {
+^bb0(%in: i32, %arg1: i32, %arg2: i32):
+  %1 = arith.addi %in, %arg2 : i32
+  linalg_ext.yield %1, %1 : i32, i32
+} -> tensor<1x2047xi32>, tensor<1xi32>
+%inserted_slice = tensor.insert_slice %scanned#0 into %arg0[0, 1] [1, 2047] [1, 1] : tensor<1x2047xi32> into tensor<1x2048xi32>
 ```
-
-- tt.int_to_ptr / tt.ptr_to_int
-
-`tt.int_to_ptr` 和 `tt.ptr_to_int` 分别是用来实现 int64-to-pointer 和 pointer-to-int 的，但 conversion 的每一个pattern都会使用 `TypeConverter` 来将 `!tt.ptr` 转为 `int64`，这两个op也就没了作用。都直接使用它们的第一个 operand 来替换 `rewriter.replaceOp(op, adaptor.getOperands()[0]);`。
 
 - tt.cat
 
@@ -1651,12 +1739,61 @@ tt.func @b_ptrs(%b_ptr: !tt.ptr<f16>, %offs_bn: tensor<64xi32>, %stride_bk: i32)
 %inserted_slice_1 = tensor.insert_slice %rhs into %inserted_slice[%offset] [32] [1] : tensor<32xf32> into tensor<64xf32>
 ```
 
+- tt.join
+
+`tt.join` 和 `tt.cat` 类似，都是拼接tensor，但 `join` 会（在最外维）增加维度，而  `cat` 只（在最外维）改变DimSize不会增加维度。也下降到 `tensor.insert_slice`。
+
+```mlir
+%join = tt.join %arg0, %arg1 : tensor<2x8xi8> -> tensor<2x8x2xi8>
+->
+%insert1 = tensor.insert_slice %arg0 into %empty[0, 0, 0] [2, 8, 1] [1, 1, 1] : tensor<2x8xi8> into tensor<2x8x2xi8>
+%insert2 = tensor.insert_slice %arg1 into %insert1[0, 0, 1] [2, 8, 1] [1, 1, 1] : tensor<2x8xi8> into tensor<2x8x2xi8>
+```
+
+- tt.split
+
+`tt.split` 用于将一个 tensor 沿**最内维** 均分为两部分，要求最内维 DimSize = 2。直接下降为 `tensor.extract_slice`。
+
+```mlir
+%0, %1 = tt.split %arg0 : tensor<2x8x2xi8> -> tensor<2x8xi8>
+->
+%extract1 = tensor.extract_slice %arg0[0, 0, 0] [2, 8, 1] [1, 1, 1] : tensor<2x8x2xi8> to tensor<2x8xi8>
+%extract2 = tensor.extract_slice %arg0[0, 0, 1] [2, 8, 1] [1, 1, 1] : tensor<2x8x2xi8> to tensor<2x8xi8>
+```
+
+- tt.clampf
+
+`tt.clampf` 有三个参数 `getX()`, `getMin()`, `getMax()` ，表示将 `getX()` 限制在 `[getMin(), getMax()]` 之间的数。根据 `op.getPropagateNan()` 的属性下降为
+
+```mlir
+- triton::PropagateNan::NONE
+  arith.maxnumf + arith.minnumf (当比较值中有NaN时，直接选择另一个值作为输出)
+
+- triton::PropagateNan::ALL
+  arith.maximumf + arith.minimumf
+```
+
+- tt.precise_sqrt / tt.precise_divf / tt.mulhiui
+
+tt.precise_sqrt / tt.precise_divf 直接下降到 math.sqrt / math.divf， `tt.mulhiui` 下降到自定义的 `math_ext.mulhiui`。
+
+- tt.histogram
+
+`tt.histogram` 是表直方图的算子，当前下降用的是比较 naive 的实现，后续应该会增加 `linalg_ext` 的op来承接。
+
+### mask 信息
+
+当 `arith.cmpi` 和 `arith.select` 是用来做计算 mask 时，可以将 `arith.cmpi` 转为 `maxsi + minsi + fill(%true) + pad` 的格式，将 `arith.select` 转为 `tensor.extract_slice + pad` 的格式，直接获取信息。
+
+TODO...
 
 ### ptr
 
-`blockarg` -> `llvm.inttooptr` -> `aux.view` -> `bufferization.to_tensor` -> `tensor`
+load : `blockarg` -> `llvm.inttooptr` -> `aux.view` -> `bufferization.to_tensor` -> `tensor`
 
+store : `bufferize.materialize_in_destination` 就是 `copy a tensor`
 
+TODO...
 
 ### summary
 
@@ -1678,17 +1815,33 @@ tt.func @b_ptrs(%b_ptr: !tt.ptr<f16>, %offs_bn: tensor<64xi32>, %stride_bk: i32)
 
 op-to-op conversion summary:
 
-尽量在 `arith`, `math`, `linalg`, `tensor` 中找到能承接 `tt.ops` 到op，`arith.ops`, `math.ops` 只处理标量，如果是op操作tensor，那下降到 `linalg.map{arith.ops/math.ops}`。
+尽量在 `arith`, `math`, `linalg`, `tensor` 中找到能承接 `tt.ops` 到op，`arith.ops`, `math.ops` 只处理标量，如果是op操作tensor，那下降到 `linalg.map{arith.ops/math.ops}`。且所有 `!tt.ptr` 都被 `TypeConverter` 给转为 `i64` 了。
 
 | ttir     | linalg-on-tensor        |
 | -------- | ------------- |
-| tt.get_program_id x : i32  |  tt.get_program_id x : i32 |
 | arith.ops 标量计算   | arith.ops 标量计算      |
-| tt.make_range      | linalg.fill      |
 | arith.ops / math.ops tensor计算   | linalg.map{arith.ops}  / linalg.map{math.ops}    |
-| tt.cat  |   tensor.insert_slice   |
-
-
+| tt.get_program_id x : i32  |  tt.get_program_id x : i32 |
+| tt.func / tt.return / tt.call | func.func, func.return, func.call |
+| tt.broadcast      | tensor.collapse_shape + linalg.broadcast     |
+| tt.splat | linalg.fill |
+|  tt.expand_dims  |  tensor.expand_shape |
+| tt.addptr | linalg.map{addi} |
+| tt.make_range | linalg_ext.make_range |
+| tt.dot | linalg.matmul |
+| tt.bitcast | linalg.map{bitcast} |
+| tt.extern_elementwise | linalg_ext.libdevice_call / linalg_ext.scalar_libdevice_call |
+| tt.int_to_ptr / tt.ptr_to_int | 直接使用第一个 operand 替换使用 |
+| tt.trans | linalg.transpose |
+| tt.print | aux.print / aux.scalar.print |
+| tt.assert | linalg_ext.assert |
+| tt.reduce | linalg.reduce |
+| tt.scan | linalg_ext.scan |s
+| tt.cat  | tensor.insert_slice |
+| tt.join / tt.split | tensor.insert_slice + tensor.insert_slice |
+| tt.clampf | arith.maximumf(arith.maxnumf) + arith.minimumf(arith.minnumf) |
+| tt.precise_sqrt / tt.precise_divf / tt.mulhiui | math.sqrt / math.divf / math_ext.mulhiui |
+| tt.histogram | 比较 naive 的实现，后续会改为 linalg_ext.histogram |
 
 代码中构造 `tensor.empty` 作为输出时，很多都是使用
 ```cpp

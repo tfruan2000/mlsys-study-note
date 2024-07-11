@@ -1040,7 +1040,12 @@ size_t mlir::moveLoopInvariantCode(LoopLikeOpInterface loopLike) {
     - 将一个range映射到另一个range
     - 用法
       ```cpp
+      // 将 srcDims 中的每个元素都乘以2
       auto res = llvm::map_range(srcDims, [&](int64_t dim) { return dim * 2; });
+
+      // 判断所有的operand的shape都相同
+      assert(llvm::all_equal(llvm::map_range(op.getOperandTypes(),
+          [](Type t) { return t.cast<TensorType>().getShape(); })));
       ```
     - 源码
       ```cpp
