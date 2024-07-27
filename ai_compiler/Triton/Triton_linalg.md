@@ -15,7 +15,7 @@ https://zhuanlan.zhihu.com/p/706401510
   - [x] Auxiliar
   - [x] LinalgExt
 - [ ] Analysis
-- [ ] Conversion+
+- [ ] Conversion
 - [ ] Pipeline
 
 关于 Triton-Linalg 项目技术细节 主要还是在后三节 `Analysis` , `Conversion` 以及 `Pipeline`，但目前还没整理好（还没时间看qwq），闲暇时再继续总结下。本人知识深度有限，还望大家指正~
@@ -1230,6 +1230,8 @@ for (i0 = 0; i0 < Batch0; ++i0) {
 }
 ```
 
+算子表示
+
 ```mlir
 %input: tensor<16x8xf32>
 %indices: tensor<4x1xi32>
@@ -1290,6 +1292,8 @@ for (i0 = 0; i0 < Batch0; ++i0) {
       }
     }
 ```
+
+算子表示
 
 ```mlir
 %update: tensor<4x2x4xf32>
@@ -1862,7 +1866,7 @@ op-to-op conversion summary:
 | tt.join / tt.split                             | tensor.insert_slice + tensor.insert_slice                     |
 | tt.clampf                                      | arith.maximumf(arith.maxnumf) + arith.minimumf(arith.minnumf) |
 | tt.precise_sqrt / tt.precise_divf / tt.mulhiui | math.sqrt / math.divf / math_ext.mulhiui                      |
-| tt.histogram                                   | 比较 naive 的实现，后续会改为 linalg_ext.histogram             |
+| tt.histogram                                   | 比较 naive 的拼接实现，后续会改为 linalg_ext.histogram             |
 
 代码中构造 `tensor.empty` 作为输出时，很多都是使用
 ```cpp

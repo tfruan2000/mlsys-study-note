@@ -73,7 +73,7 @@ assert(a && “debug info”)
 
 a一般为bool表达式，当a的结果为false时，输出”debug info”
 
-### 类中重载
+### 5. 类中重载
 
 ```cpp
 class AliasResult {
@@ -271,6 +271,16 @@ forward(_LIBCPP_LIFETIMEBOUND __libcpp_remove_reference_t<_Tp>&& __t) _NOEXCEPT 
   return static_cast<_Tp&&>(__t);
 }
 ```
+
+### **2.6 emplace_back 和 push_back**
+
+`push_back` 和 `emplace_back`的一个区别在于实例化 `std::vector<T>` 之后，push_back的参数是已知的，就是 `T` ; 而 `emplace_back` 的参数是未知的，需要从参数中推导出来。
+
+`push_back` 会在合适的位置使用传入的常量左值引用或者右值引用直接构造新元素。`emplace_back` 除此之外可以直接传入构造函数。
+
+`emplace_back` 支持除了支持 `copy` 和 `move` 构造之外，还支持直接构造。如果**类型不支持move构造，并且copy构造代价比较大**的时候，使用emplace_back是可以得到更多的性能收益的。
+
+`emplace_back` 过程中使用完美转发，所以不断在转发大小不相同的char数组。`push_back`可以使用同一段代码，`emplace_back`每一次调用都需要更新新的代码。
 
 ## **3. 类和对象**
 

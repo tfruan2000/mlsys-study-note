@@ -406,3 +406,28 @@ input 和 values 是等维度的
     device_print
     device_assert
 ```
+
+pdb
+
+```python
+import pdb
+pdb.set_trace()
+```
+
+### tl.device_print
+
+当发现op精度测试失败,可以固定测试规模和 `tuning config`(保证只有一个，不然会多次print) ,然后使用 `print` 大法。
+
+例如定位 `layernorm backward` 精度时，例如
+```python
+if pid == 1:
+tl.device_print("off:", off)
+tl.device_print("offset:", offset)
+tl.device_print("mask:", mask)
+tl.device_print("x: ", x)
+tl.device_print("dy: ", dy)
+tl.device_print("w: ", w)
+tl.device_print("mean: ", mean)
+tl.device_print("r: ", rstd)
+tl.device_print("dx: ", dx)
+```
