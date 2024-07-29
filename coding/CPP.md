@@ -19,6 +19,14 @@ std::unique_ptr<OperationDefinition> def =
 
 - std::shared_ptr: 共享所有权的智能指针，允许多个指针共享同一个资源，使用引用计数来跟踪资源的所有权，当最后一个shared_ptr被销毁或重制时，资源才会释放。适用于跨多个对象共享资源
 
+例：所有 `canonicalize` 行为在进行时都共享 `patterns`
+
+```cpp
+// mlir/lib/Transforms/Canonicalizer.cpp
+GreedyRewriteConfig config;
+std::shared_ptr<const FrozenRewritePatternSet> patterns;
+```
+
 - std::weak_ptr: 作为std::shared_ptr的辅助类，允许观察和访问由std::shared_ptr管理的资源，但不会增加引用计数。用于解决std::share_ptr造成的循环引用，使用其允许你创建一个指向由`std::shared_ptr`管理的资源的非拥有（弱）引用，而不会增加引用计数。它通过解除`std::shared_ptr`的循环引用来避免内存泄漏。
 
 ### 2. lambda编程
@@ -165,8 +173,7 @@ x + y;          // 运算产生的临时对象是右值
 - 右值一般是不可寻址的常量，或在**表达式求值过程**中创建的无名临时变量，短暂性，让临时变量不消失，直接将目标指向临时变量，避免无意义的复制，减缓内存开销。
 
 > 左值用于写操作，可以存储数据；
-右值用于读操作，读到的数据放在一个看不见的临时变量
->
+> 右值用于读操作，读到的数据放在一个看不见的临时变量
 
 **区别**：
 
@@ -176,7 +183,7 @@ x + y;          // 运算产生的临时对象是右值
 
 ### **2.2 左值引用和右值引用**
 
-引用的本质是指针常量 `int &y=x` 等价于 `int* const y = &a;`
+引用的本质是指针常量 `int &y=x` 等价于 `int* const y = &x;`
 
 指针的大小和os有关，按os位数 `sizeof(void*)`
 
@@ -234,6 +241,13 @@ c = 20
 std::move 用于将对象转为右值引用（计算完生命周期就结束，而且不会被修改，所以MLIR中的pattern传入applypattern函数一般使用std::move），常用于移动语义和避免不必要的拷贝操作
 
 - 移动语义：不复制对象的前提下，将内容传递给函数或赋值给另一个对象
+
+例：将一个临时变量赋值给对象a的属性b
+
+需要完成：复制临时变量、把复制值放在放在b的地址
+
+使用 `move` 后，会直接把临时变量地址指针和目的地址指针指向交换
+
 - 转移所有权：将一个容器的所有权转移给另一个容器
 
 ```cpp
@@ -269,6 +283,17 @@ _LIBCPP_NODISCARD_EXT inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR _Tp&&
 forward(_LIBCPP_LIFETIMEBOUND __libcpp_remove_reference_t<_Tp>&& __t) _NOEXCEPT {
   static_assert(!is_lvalue_reference<_Tp>::value, "cannot forward an rvalue as an lvalue");
   return static_cast<_Tp&&>(__t);
+}
+```
+
+例：下面的代码实现根据条件完成转换。当传入rvalue（临时变量），则等效为`std::move`
+
+如果外面传来了lvalue, 它就转发lvalue并且启用复制. 然后它也还能保留const.
+
+```cpp
+template<typename T>
+void set(T && var1){
+  m_var = std::forward<T>(var);
 }
 ```
 

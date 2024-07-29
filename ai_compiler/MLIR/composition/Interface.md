@@ -66,7 +66,9 @@ OpOperandVector getDpsInitOperands()
 
 ## TilingInterface
 
-对于有该interface的op可以cast成该interface `llvm::cast<TilingInterface>(op)`
+对于有该interface的op可以cast成该interface `llvm::cast<TilingInterface>(op)`。要求被tile的op都要实现该interface。
+
+自定义的Dialect以及op并新增`TilingTnterface`可以参考Triton-Linalg中的[LinalgExtOpTilingInterface](https://github.com/Cambricon/triton-linalg/blob/master/lib/Dialect/LinalgExt/IR/LinalgExtOps.cpp)
 
 - TilingResult类
 
@@ -541,15 +543,45 @@ auto isSame = [](OpFoldResult, OpFoldResult) { return a == b};
 if (prevInsertOp.isSameAs(insertOp, isSame))
 ```
 
+## BranchOpInterface
+
+```bash
+mlir/include/mlir/Interfaces/ControlFlowInterfaces.td
+```
+
+带有分支的op，如 `cf.br`
+
+```cpp
+  SmallVector<Block *, 4> blocks;
+  if (isa<RegionBranchOpInterface>(op)) {
+    // When the op is a `RegionBranchOpInterface`, like an `scf.for` or an
+    // `scf.index_switch` op, its branch operand controls the flow into this
+    // op's regions.
+    for (Region &region : op->getRegions()) {
+      for (Block &block : region)
+        blocks.push_back(&block);
+    }
+  } else if (isa<BranchOpInterface>(op)) {
+    // When the op is a `BranchOpInterface`, like a `cf.cond_br` or a
+    // `cf.switch` op, its branch operand controls the flow into this op's
+    // successors.
+    blocks = op->getSuccessors();
+  }
+```
+
 ## RegionBranchOpInterface
 
-分支类的op，比如 scf.if
+```bash
+mlir/include/mlir/Interfaces/ControlFlowInterfaces.td
+```
+
+带region的且会自动跳转region的op，比如 `scf.if`、`scf.for`
 
 - getSuccessorRegions
 
 ```cpp
-    SmallVector<RegionSuccessor, 2> successors;
-    branch.getSuccessorRegions(pred, successors);
+SmallVector<RegionSuccessor, 2> successors;
+branch.getSuccessorRegions(pred, successors);
 ```
 
 ## AllocOpInterface

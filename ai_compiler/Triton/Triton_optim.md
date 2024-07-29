@@ -164,7 +164,7 @@ class LayerNorm(torch.autograd.Function):
         bias_grad = torch.zeros((weight.shape[0],), dtype=torch.float, device=weight.device)
         layer_norm_backward_kernel[(M, )](
             in_grad, out_grad, weight_grad, bias_grad, x, weight, mean, rstd,
-            N, BLOCK_COL_SIZE=BLOCK_SIZE,
+            N, BLOCK_COL_SIZE=BLOCK_SIZE, num_warps = num_warps,
         )
         weight_grad = weight_grad.to(x.dtype)
         bias_grad = bias_grad.to(x.dtype)
@@ -300,7 +300,7 @@ class LayerNorm(torch.autograd.Function):
         grid = lambda META: (min(triton.cdiv(M, META['BLOCK_ROW_SIZE']), MAX_GRID_NUM),)
         layer_norm_backward_kernel[grid](
             in_grad, out_grad, weight_grad, bias_grad, x, weight, mean, rstd,
-            M, N, BLOCK_COL_SIZE=BLOCK_SIZE,
+            M, N, BLOCK_COL_SIZE=BLOCK_SIZE, num_warps = num_warps,
         )
         weight_grad = weight_grad.to(x.dtype)
         bias_grad = bias_grad.to(x.dtype)
@@ -348,15 +348,15 @@ def cfggen_bw():
 def cfggen_input_bw():
     block_m = [1, 4, 16, 32]
     block_n = [32, 256, 1024, 2048]
-    # num_stages 和 num_wraps 这里就不提供大概设置多少了
+    # num_stages 和 num_warps 这里就不提供大概设置多少了
     num_stages = [...]
-    num_wraps = [...]
+    num_warps = [...]
     configs = [
         triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w, num_stages=s)
         for m in block_m
         for n in block_n
         for s in num_stages
-        for w in num_wraps
+        for w in num_warps
     ]
     return configs
 
@@ -425,15 +425,15 @@ def input_backward_kernel(
 def cfggen_wb_bw():
     block_m = [32, 64, 128, 512, 1024]
     block_n = [1, 4, 16, 32]
-    # num_stages 和 num_wraps 这里就不提供大概设置多少了
+    # num_stages 和 num_warps 这里就不提供大概设置多少了
     num_stages = [...]
-    num_wraps = [...]
+    num_warps = [...]
     configs = [
         triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_stages=s)
         for m in block_m
         for n in block_n
         for s in num_stages
-        for w in num_wraps
+        for w in num_warps
     ]
     return configs
 
@@ -513,7 +513,7 @@ class LayerNorm(torch.autograd.Function):
             grid = lambda META: (min(triton.cdiv(M, META['BLOCK_ROW_SIZE']), MAX_GRID_NUM),)
             layer_norm_backward_kernel[grid](
                 in_grad, out_grad, weight_grad, bias_grad, x, weight, mean, rstd,
-                M, N, BLOCK_COL_SIZE=BLOCK_SIZE,
+                M, N, BLOCK_COL_SIZE=BLOCK_SIZE, num_warps = num_warps,
             )
         else:
             grid = lambda META: (min(triton.cdiv(M, META['BLOCK_ROW_SIZE']), MAX_GRID_NUM),)
