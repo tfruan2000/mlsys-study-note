@@ -1911,8 +1911,6 @@ mlir/lib/Pass/Pass.cpp
   markAnalysesPreserved<DominanceInfo, PostDominanceInfo>();
 ```
 
-
-
 ---
 
 ## Rank
@@ -2322,6 +2320,75 @@ def FuseIntoContainingOp :
 ---
 
 ## tensor
+
+---
+
+## test
+
+当我们增加一个新feature后，需要添加对应的测试文件。
+
+以[mlir/test/Dialect/Linalg/decompose-ops.mlir](https://github.com/llvm/llvm-project/blob/main/mlir/test/Dialect/Linalg/decompose-ops.mlir)为例：
+
+(0) 文件开头 `// RUN: opt_name -pass-name -split-input-file %s | FileCheck %s`
+
+`FileCheck` 后可以所使用 `check-prefix` 来自定义 `CHECK` 的头
+
+```mlir
+// RUN: mlir-opt -test-linalg-decompose-ops -cse -split-input-file %s | FileCheck %s
+// RUN: mlir-opt -test-linalg-decompose-ops=remove-dead-args-and-results -cse -split-input-file %s | FileCheck %s --check-prefix=CANONICALIZECHECK
+```
+
+(1) `CHECK` : 最通用
+
+```mlir
+// CHECK: %[[ALLOC0:.*]] = memref.alloc() : () -> memref<32xf32>
+// 检查使用它时 %[[ALLOC0]]
+```
+
+(2) `CHECK-LABEL` : 一般后接func名
+
+```mlir
+// CHECK-LABEL: func @simple_op(
+```
+
+(3)`CHECK-SAME` : 上一个CHECK的延伸，
+
+```mlir
+// CHECK-LABEL: func.func @forward_no_view(
+// CHECK-SAME:     %[[ARG0:[a-zA-Z0-9_]+]]: memref<32xf32>
+// CHECK-SAME:     %[[ARG1:[a-zA-Z0-9_]+]]: i1
+
+// CHECK:   %[[GENERIC1:.+]]:3 = linalg.generic
+// CHECK-SAME:       [#[[MAP0]], #[[MAP1]], #[[MAP2]], #[[MAP3]], #[[MAP0]], #[[MAP3]]]
+// CHECK-SAME:       ["parallel", "parallel"]
+// CHECK-SAME:       ins(%[[ARG0]], %[[ARG1]], %[[ARG2]] :
+// CHECK-SAME:       outs(%[[INIT1]], %[[INIT2]], %[[INIT1]] :
+```
+
+(4) `CHECK-NEXT` : 检查紧挨上一个ir的ir
+
+(5) `CHECK-DAG` : 不考虑检查的顺序
+
+- 测试方法
+
+```bash
+build/bin/llvm-lit mlir/test/Dialect/Linalg/decompose-ops.mlir -a
+```
+
+综合例
+
+```mlir
+// CHECK-LABEL: func.func @forward_no_view(
+// CHECK-SAME:     %[[ARG0:[a-zA-Z0-9_]+]]: memref<32xf32>
+// CHECK-SAME:     %[[ARG1:[a-zA-Z0-9_]+]]: i1
+// CHECK:   %[[ALLOC0:.*]] = memref.alloc() : () -> memref<32xf32>
+// CHECK-NOT: memref.copy
+// CHECK:   cf.cond_br %[[ARG1]], ^bb1(%[[ALLOC0]], %[[ARG0]] : memref<32xf32>, memref<32xf32>), ^bb2(%[[ARG0]] : memref<32xf32>)
+// CHECK: ^bb1(%[[VAL0:.*]]: memref<32xf32>, %[[VAL1:.*]]: memref<32xf32>):
+// CHECK:   %[[ALLOC1:.*]] = memref.alloc() : () -> memref<32xf32>
+// CHECK:   vector.xxx %[[ALLOC1]], %[[VAL1]], []) : (memref<32xf32>, memref<32xf32>) -> ()
+// CHECK:   cf.br ^bb2(%[[ALLOC1]] : memref<32xf32>)
+```
 
 ---
 

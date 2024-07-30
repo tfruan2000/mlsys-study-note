@@ -244,7 +244,11 @@ switch(conditionallySpeculatable.getSpeculatability()) {
 
 ## BranchOpInterface
 
-所以分支类型的op都继承了该interface，例如scf.if，scf.for等
+```bash
+mlir/include/mlir/Interfaces/ControlFlowInterfaces.td
+```
+
+所以分支类型的op都继承了该interface，例如`cf.br`、`cf.cond_br`等
 
 - mlir::SuccessorOperands getSuccessorOperands(unsigned index)
 
@@ -260,29 +264,36 @@ invoke %function(%0)
 例子：
 
 ```cpp
-/// mlir/lib/Dialect/Linalg/Transforms/Detensorize.cpp
-/// The result is a map from a branch op to a subset of indices of its operands.
-/// The indices specify which of the branch op's operands should be detensored.
-static DenseMap<Operation *, DenseSet<int>> computeBranchOpDetensoring(
-    const DenseSet<BlockArgument> &blockArgsToDetensor) {
-  DenseMap<Operation *, DenseSet<int>> detensorableBranchOps
-  for (auto blockArgumentElem : blockArgsToDetensor) {
-    Block *block = blockArgumentElem.getOwner()
-    for (PredecessorIterator pred = block->pred_begin();
-         pred != block->pred_end(); ++pred) {
-      BranchOpInterface terminator =
-          dyn_cast<BranchOpInterface>((*pred)->getTerminator());
-      auto blockOperands =
-          terminator.getSuccessorOperands(pred.getSuccessorIndex())
-      if (blockOperands.empty() ||
-          blockOperands.isOperandProduced(blockArgumentElem.getArgNumber()))
-        continue
-      detensorableBranchOps[terminator].insert(
-          blockOperands.getOperandIndex(blockArgumentElem.getArgNumber()));
+  SmallVector<Block *, 4> blocks;
+  if (isa<RegionBranchOpInterface>(op)) {
+    // When the op is a `RegionBranchOpInterface`, like an `scf.for` or an
+    // `scf.index_switch` op, its branch operand controls the flow into this
+    // op's regions.
+    for (Region &region : op->getRegions()) {
+      for (Block &block : region)
+        blocks.push_back(&block);
     }
+  } else if (isa<BranchOpInterface>(op)) {
+    // When the op is a `BranchOpInterface`, like a `cf.cond_br` or a
+    // `cf.switch` op, its branch operand controls the flow into this op's
+    // successors.
+    blocks = op->getSuccessors();
+  }
+```
 
-  return detensorableBranchOps;
-}
+## RegionBranchOpInterface
+
+```bash
+mlir/include/mlir/Interfaces/ControlFlowInterfaces.td
+```
+
+带region的且会自动跳转region的op，比如 `scf.if`、`scf.for`
+
+- getSuccessorRegions
+
+```cpp
+SmallVector<RegionSuccessor, 2> successors;
+branch.getSuccessorRegions(pred, successors);
 ```
 
 ## LoopLikeOpInterface
@@ -541,47 +552,6 @@ memref.view, memref.reshape, memref.reshape, memref.reinterpret_cast, memref.cas
 ```cpp
 auto isSame = [](OpFoldResult, OpFoldResult) { return a == b};
 if (prevInsertOp.isSameAs(insertOp, isSame))
-```
-
-## BranchOpInterface
-
-```bash
-mlir/include/mlir/Interfaces/ControlFlowInterfaces.td
-```
-
-带有分支的op，如 `cf.br`
-
-```cpp
-  SmallVector<Block *, 4> blocks;
-  if (isa<RegionBranchOpInterface>(op)) {
-    // When the op is a `RegionBranchOpInterface`, like an `scf.for` or an
-    // `scf.index_switch` op, its branch operand controls the flow into this
-    // op's regions.
-    for (Region &region : op->getRegions()) {
-      for (Block &block : region)
-        blocks.push_back(&block);
-    }
-  } else if (isa<BranchOpInterface>(op)) {
-    // When the op is a `BranchOpInterface`, like a `cf.cond_br` or a
-    // `cf.switch` op, its branch operand controls the flow into this op's
-    // successors.
-    blocks = op->getSuccessors();
-  }
-```
-
-## RegionBranchOpInterface
-
-```bash
-mlir/include/mlir/Interfaces/ControlFlowInterfaces.td
-```
-
-带region的且会自动跳转region的op，比如 `scf.if`、`scf.for`
-
-- getSuccessorRegions
-
-```cpp
-SmallVector<RegionSuccessor, 2> successors;
-branch.getSuccessorRegions(pred, successors);
 ```
 
 ## AllocOpInterface

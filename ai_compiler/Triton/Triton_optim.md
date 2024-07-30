@@ -1,8 +1,8 @@
 # Triton kernel optim
 
-kernel写法上请参考 [triton language guide](https://triton-lang.org/main/python-api/triton.language.html)、[triton tutorial](https://github.com/triton-lang/triton/blob/main/python/tutorials)、以及[flaggems](https://github.com/FlagOpen/FlagGems/blob/master/src/flag_gems/ops)等项目，网络资料很不错~
-
 本文记录下本人优化 `Triton Kernel` 的思路，由于不了解 `Cuda` 编程以及对 `GPU` 体系结构知识只是一知半解，所以本文设计的优化思路都比较通用(aka **naive**)。
+
+kernel写法上请参考 [triton language guide](https://triton-lang.org/main/python-api/triton.language.html)、[triton tutorial](https://github.com/triton-lang/triton/blob/main/python/tutorials)、以及[flaggems](https://github.com/FlagOpen/FlagGems/blob/master/src/flag_gems/ops)等项目，网络资料很不错~
 
 ---
 
@@ -56,36 +56,6 @@ pytest test_reduction_perf.py:test_perf_layernorm_backward -s
 
 当前实现功能上基本能cover所有的case，**性能上我也不知道如何，因为我还没在GPU测过hhh**。但还是可以强行优化一下，而且在我的环境下确实有性能提升叻，并且精度测试没问题。
 
-### 替换算子
-
-简单的算子替换:
-
-- `tl.max(a, 0.0)` 可以换成 `tl.where(a > 0, a, 0.0)`
-- `x` 和 `y` 在 `tl.load` 时用了mask，随后的 `tl.where(mask, x - y, 0.0)` 可以删除
-- 大规模 `reduce(10000->1)` -> 多级 `reduce(10000->100->1)`
-- ...
-
-算法替换：
-
-例如：累乘 -> 二分乘法
-```python
-tmp = 1
-def mul_acc(x, l, h):
-    tmp = 1
-    for i in rang(l, h)
-        tmp *= i
-    return tmp
-
-->
-
-def binary_mul(x, l, h):
-    if l >= h:
-        return 1
-    if h - l == 1:
-        return x[l]
-    mid = (l + h) // 2
-    return binary_mul(x, l, mid) + binary_mul(x, mid, h)
-```
 
 ### 合并 kernel
 
@@ -527,6 +497,110 @@ class LayerNorm(torch.autograd.Function):
                 out_grad, x, mean, rstd, weight_grad, bias_grad, M, N,
             )
         return in_grad, None, weight_grad, bias_grad, None, None
+```
+
+### 替换算子
+
+简单的算子替换:
+
+- `tl.max(a, 0.0)` 可以换成 `tl.where(a > 0, a, 0.0)`
+- `x` 和 `y` 在 `tl.load` 时用了mask，随后的 `tl.where(mask, x - y, 0.0)` 可以删除
+- 大规模 `reduce(10000->1)` -> 多级 `reduce(10000->100->1)`
+- ...
+
+算法替换：
+
+例如：累乘 -> 二分乘法
+
+算法实现上
+
+```python
+tmp = 1
+def mul_acc(x, l, h):
+    tmp = 1
+    for i in rang(l, h)
+        tmp *= i
+    return tmp
+
+->
+
+def binary_mul(x, l, h):
+    if l >= h:
+        return 1
+    if h - l == 1:
+        return x[l]
+    mid = (l + h) // 2
+    return binary_mul(x, l, mid) + binary_mul(x, mid, h)
+```
+
+以优化 flaggems 中的 [prod](https://github.com/FlagOpen/FlagGems/blob/master/src/flag_gems/ops/prod.py#L18) 为例：
+
+```python
+@triton.jit
+def prod_kernel_mid(
+    inp,
+    mid,
+    M,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    inp_ptrs = inp + offset
+    mask = offset < M
+    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
+    mid_value = tl.reduce(inp_val, axis=0, combine_fn=reduce_mul)
+    mid_ptr = mid + pid
+    tl.store(mid_ptr, mid_value.to(inp_val.dtype))
+```
+
+首先拆时间片循环：
+
+```python
+@triton.jit
+def prod_kernel_mid(
+    inp,
+    mid,
+    M,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_jobs = tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    _tmp = tl.full([BLOCK_SIZE], value=1.0, dtype=tl.float32)
+    for off in range(block_start, M, step):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
+        _tmp = _tmp * input_val
+    mid_value = tl.reduce(_tmp, axis=0, combine_fn=reduce_mul)
+    tl.store(mid_ptr + pid, mid_value.to(inp_val.dtype))
+
+# launch func
+# grid = lambda META: min((triton.cdiv(M, MEAT['BLOCK_SIZE']), MAX_GRID_NUM),)
+```
+
+然后将 `_tmp` 的 累乘优化为二分乘法（`reduce_mul`->归约规约）
+
+```python
+
+
+mid_value = tl.reduce(_tmp, axis=0, combine_fn=reduce_mul)
+tl.store(mid_ptr + pid, mid_value.to(inp_val.dtype))
+
+->
+
+# triton.Config({"BLOCK_SIZE": m, "ITER_NUM": math.log2(m) + 1} for m in [...])
+# 将数组 _tmp 前一半的元素与后一半的元素相乘，并将结果存储在前一半的位置
+# 以 BLOCK_SIZE = 16 为例，ITER_NUM=5
+# 例： x   _tmp[:BLOCK_SIZE // (2 ** 1)]   _tmp[BLOCK_SIZE // (2 ** 1):BLOCK_SIZE // (2 ** (x - 1))]
+#     1   _tmp[:8]                        _tmp[8:16]
+#     2   _tmp[:4]                        _tmp[4:8]
+#     3   _tmp[:2]                        _tmp[2:4]
+#     4   _tmp[:1]                        _tmp[1:2]
+for x in tl.static_range(1, int(ITER_NUM), 1):
+    _tmp[:BLOCK_SIZE // (2 ** x)] = _tmp[:BLOCK_SIZE // (2 ** x)] * _tmp[BLOCK_SIZE // (2 ** x):BLOCK_SIZE // (2 ** (x - 1))]
+tl.store(mid_ptr + pid, _tmp[0])
 ```
 
 ---
