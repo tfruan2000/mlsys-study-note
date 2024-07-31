@@ -44,8 +44,7 @@ def test_perf_layernorm_backward():
 
 ```bash
 cd benchmark
-# 如果我没记错qwq
-pytest test_reduction_perf.py:test_perf_layernorm_backward -s
+pytest test_reduction_perf.py::test_perf_layernorm_backward -s
 ```
 
 ## kernel optim
@@ -583,25 +582,31 @@ def prod_kernel_mid(
 然后将 `_tmp` 的 累乘优化为二分乘法（`reduce_mul`->归约规约）
 
 ```python
-
-
 mid_value = tl.reduce(_tmp, axis=0, combine_fn=reduce_mul)
 tl.store(mid_ptr + pid, mid_value.to(inp_val.dtype))
 
 ->
 
-# triton.Config({"BLOCK_SIZE": m, "ITER_NUM": math.log2(m) + 1} for m in [...])
+# triton.Config({"BLOCK_SIZE": m, "ITER_NUM": math.log2(m)} for m in [...])
 # 将数组 _tmp 前一半的元素与后一半的元素相乘，并将结果存储在前一半的位置
-# 以 BLOCK_SIZE = 16 为例，ITER_NUM=5
+# 以 BLOCK_SIZE = 16 为例，ITER_NUM=4
 # 例： x   _tmp[:BLOCK_SIZE // (2 ** 1)]   _tmp[BLOCK_SIZE // (2 ** 1):BLOCK_SIZE // (2 ** (x - 1))]
 #     1   _tmp[:8]                        _tmp[8:16]
 #     2   _tmp[:4]                        _tmp[4:8]
 #     3   _tmp[:2]                        _tmp[2:4]
 #     4   _tmp[:1]                        _tmp[1:2]
 for x in tl.static_range(1, int(ITER_NUM), 1):
+    # 等下于 _tmp[:BLOCK_SIZE // (2 ** x)] = reduce_mul(_tmp[:BLOCK_SIZE // (2 ** x)], _tmp[BLOCK_SIZE // (2 ** x):BLOCK_SIZE // (2 ** (x - 1))])
     _tmp[:BLOCK_SIZE // (2 ** x)] = _tmp[:BLOCK_SIZE // (2 ** x)] * _tmp[BLOCK_SIZE // (2 ** x):BLOCK_SIZE // (2 ** (x - 1))]
-tl.store(mid_ptr + pid, _tmp[0])
+# reduce(_tmp[:2])
+res = tl.reduce(_tmp[:BLOCK_SIZE // (2 ** (ITER_NUM - 1))], axis=0, combine_fn=reduce_mul)
+tl.store(mid_ptr + pid, res)
+
+# 如果BLOCK_SIZE设置的都是二次幂，并且 {"ITER_NUM": math.log2(m)+1} ，则直接store即可
+# tl.store(mid_ptr + pid, _tmp[0])
 ```
+
+需要注意的是，上述并行归约优化在`tl.reduce`下降过程完成更具泛化性。
 
 ---
 
