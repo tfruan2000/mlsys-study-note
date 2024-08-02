@@ -248,37 +248,62 @@ switch(conditionallySpeculatable.getSpeculatability()) {
 mlir/include/mlir/Interfaces/ControlFlowInterfaces.td
 ```
 
-所以分支类型的op都继承了该interface，例如`cf.br`、`cf.cond_br`等
+所以分支类型的op都继承了该interface，例如`cf.br`、`cf.cond_br`等。对它们的处理需要额外考虑其 `successors`。
+
+例子：collect blocks
+
+```cpp
+SmallVector<Block *, 4> blocks;
+if (isa<RegionBranchOpInterface>(op)) {
+  // When the op is a `RegionBranchOpInterface`, like an `scf.for` or an
+  // `scf.index_switch` op, its branch operand controls the flow into this
+  // op's regions.
+  for (Region &region : op->getRegions()) {
+    for (Block &block : region)
+      blocks.push_back(&block);
+  }
+} else if (isa<BranchOpInterface>(op)) {
+  // When the op is a `BranchOpInterface`, like a `cf.cond_br` or a
+  // `cf.switch` op, its branch operand controls the flow into this op's
+  // successors.
+  blocks = op->getSuccessors();
+}
+```
+
+使用：
 
 - mlir::SuccessorOperands getSuccessorOperands(unsigned index)
 
-获得后继操作数，例如下面的例子中`invoke`的后继操作数是`^error`的 `%e`
+`Operation` 的 `Successors` 可以理解成该op的后续 `Block`例如下面的ir中，`cf.br` 的 `Successors` 就是 `{^bb3}`。
+
+`getSuccessorOperands` 函数会返回 `branchOp` 传给 `Successors` 中第 `index` 个 `successor` 的 `operand`，下面的ir中，`cf.br`的`getSuccessorOperands(0)`会得到 `{%2}`
 
 ```mlir
-invoke %function(%0)
-  label ^success ^error(%1 : i32)
-
-^error(%e: !error, %arg0: i32):
+  cf.br ^bb3(%2 : tensor<*xf32>)
+^bb3(%3: tensor<*xf32>):
 ```
 
-例子：
+例如获得 `BranchOpInterface` 对应的 `successors` 和 `successorOperands`
 
 ```cpp
-  SmallVector<Block *, 4> blocks;
-  if (isa<RegionBranchOpInterface>(op)) {
-    // When the op is a `RegionBranchOpInterface`, like an `scf.for` or an
-    // `scf.index_switch` op, its branch operand controls the flow into this
-    // op's regions.
-    for (Region &region : op->getRegions()) {
-      for (Block &block : region)
-        blocks.push_back(&block);
-    }
-  } else if (isa<BranchOpInterface>(op)) {
-    // When the op is a `BranchOpInterface`, like a `cf.cond_br` or a
-    // `cf.switch` op, its branch operand controls the flow into this op's
-    // successors.
-    blocks = op->getSuccessors();
-  }
+// terminator -> Operation *
+BranchOpInterface branchOp = dyn_cast<BranchOpInterface>(terminator);
+if (!branchOp)
+  return;
+
+for (unsigned succI = 0, usccE = terminator->getNumSuccessors(); succI < succE; ++succI) {
+  SuccessOperands successOperands = branchOp.getSuccessorOperands(succI);
+  Block *successor = terminator->getSuccessor(succI);
+}
+```
+
+- std::optional<::mlir::BlockArgument> getSuccessorBlockArgument(unsigned operandIndex)
+
+返回 `BranchOpInterface` 对应的第 `operandIndex` operand 所对应的 `successor BlockArg`。下面这段ir中`cf.br`的`getSuccessorBlockArgument(0)`会得到 `{%3}`
+
+```mlir
+  cf.br ^bb3(%2 : tensor<*xf32>)
+^bb3(%3: tensor<*xf32>):
 ```
 
 ## RegionBranchOpInterface
@@ -287,12 +312,13 @@ invoke %function(%0)
 mlir/include/mlir/Interfaces/ControlFlowInterfaces.td
 ```
 
-带region的且会自动跳转region的op，比如 `scf.if`、`scf.for`
+带region的且会自动跳转region的op，比如 `scf.if`、`scf.for`。对它们的处理需要考虑它们 `region` 内的op
 
 - getSuccessorRegions
 
 ```cpp
 SmallVector<RegionSuccessor, 2> successors;
+// pred -> RegionBranchPoint
 branch.getSuccessorRegions(pred, successors);
 ```
 

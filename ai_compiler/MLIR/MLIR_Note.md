@@ -2303,7 +2303,9 @@ def FuseIntoContainingOp :
     ...
   ```
 
-- `DeclareOpInterfaceMethods` 用来声明一个op实现了某个interface
+- `DeclareOpInterfaceMethods` 用来声明一个op继承了某个interface，并需要对其重写
+
+使用 [DeclareOpInterfaceMethods](https://reviews.llvm.org/D79030?id=261051) 声明的interface时需要**被重写覆盖**，而其他都是默认继承（采用默认实现）。
 
 - `builders` 用来声明一个op的builder。这里只是声明好了接口，要在其对应的文件中写一下实现
   ```cpp
