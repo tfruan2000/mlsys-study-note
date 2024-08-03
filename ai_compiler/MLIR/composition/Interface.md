@@ -274,7 +274,9 @@ if (isa<RegionBranchOpInterface>(op)) {
 
 - mlir::SuccessorOperands getSuccessorOperands(unsigned index)
 
-`Operation` 的 `Successors` 可以理解成该op的后续 `Block`例如下面的ir中，`cf.br` 的 `Successors` 就是 `{^bb3}`。
+`Operation` 的 `Successors` 可以理解成该op的后续 `Block` 例如下面的ir中，`cf.br` 的 `Successors` 就是 `{^bb3}`。
+
+> `RegionSuccessor` 表示后续的 `region`
 
 `getSuccessorOperands` 函数会返回 `branchOp` 传给 `Successors` 中第 `index` 个 `successor` 的 `operand`，下面的ir中，`cf.br`的`getSuccessorOperands(0)`会得到 `{%2}`
 
@@ -306,20 +308,75 @@ for (unsigned succI = 0, usccE = terminator->getNumSuccessors(); succI < succE; 
 ^bb3(%3: tensor<*xf32>):
 ```
 
+跨 block 的RE：首先需要获取 `%t` 的所有 `aliasChilds`。从 `%t` 开始找 `uses`，若 `use` 的 `owner` 是 `viewLike`，则继续遍历 `viewLike` 的 `result`；若 `use` 的 `owner` 是 `BranchOpInterface`，则使用 `getSuccessorBlockArgument` 获得对应的 `blockArg`，再继续往前找，直到%1。再获得 `%1` 到 `%s` 的 `viewLike` 链条，一步步找 `defineOp`，如果遇见 `blockArg` 的情况再利用 `aliasChilds` 中的对应关系 `*(llvm::find(%val) + 1)` 来跨 block。
+
+> 获取 `aliasChilds` 的方法类似 `LocalAliasAnalysis` 中的 `collectUnderlyingAddressValues`。区别在于，此时我只需要获得 `%arg` 对应的 `BranchOpInterface` 的 `operand`，而不需要考虑其他冗余的 `operand`。
+
+```mlir
+  copy %s -> %t
+  cf.br ^bb1(%t : tensor<*xf32>)
+^bb1(%1: tensor<*xf32>):
+  use %1
+```
+
 ## RegionBranchOpInterface
 
 ```bash
 mlir/include/mlir/Interfaces/ControlFlowInterfaces.td
 ```
 
-带region的且会自动跳转region的op，比如 `scf.if`、`scf.for`。对它们的处理需要考虑它们 `region` 内的op
+带region的且会自动跳转region的op，比如 `scf.if`、`scf.for`。对它们的处理需要考虑它们 `region` 内的op。
 
-- getSuccessorRegions
+> 像 `linalg` 许多op虽然有region，但并不属于 `RegionBranchOpInterface`
+
+```cpp
+SmallVector<Operation &, 4> ops;
+if (isa<RegionBranchOpInterface>(op)) {
+  for (Region &region : op->getRegions()) {
+    for (Block &block : region)
+        for (Operation &inner : block)
+          ops.push_back(&inner);
+  }
+}
+```
+
+- RegionBranchPoint
+
+这个 class 表示 `RegionBranchOpInterface` 中 `branch`(理解为跳转) 的点，一般是
+
+`parentOp` -> 即这个 `RegionBranchOpInterface`，常用 `RegionBranchPoint::parent()` 获得
+
+`Region *` -> 这个 `RegionBranchOpInterface` 中的 `region` 即可，常用 `block->getParent()` 获得
+
+- void getSuccessorRegions(mlir::RegionBranchPoint point, mlir::SmallVectorImpl<RegionSuccessor> successors)
 
 ```cpp
 SmallVector<RegionSuccessor, 2> successors;
 // pred -> RegionBranchPoint
 branch.getSuccessorRegions(pred, successors);
+```
+
+- OperandRange getEntrySuccessorOperands(mlir::RegionBranchPoint point)
+
+对于下面的ir，使用 `getEntrySuccessorOperands(RegionBranchPoint::parent())` 会获得 `{%init}`。
+
+```mlir
+%0 = scf.for %i = %arg0 to %arg0 step %c2 iter_args(%arg = %init) -> (i32) {
+  %1 = "test.op"(%i, %arg) : (index, i32) -> i32
+  scf.yield %1 : i32
+}
+```
+
+用法
+
+```cpp
+SmallVector<RegionSuccessor> successors;
+SmallVector<Attribute> operands(op->getNumOperands(), nullptr);
+branch.getEntrySuccessorRegions(operands, successors);
+
+for (RegionSuccessor &successor : successors) {
+  OperandRange operands = branch.getEntrySuccessorOperands(successor);
+  ValueRange inputs = successor.getSuccessorInputs();
 ```
 
 ## LoopLikeOpInterface
