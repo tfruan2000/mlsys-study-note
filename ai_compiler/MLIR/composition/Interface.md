@@ -175,7 +175,7 @@ def LoadOp : MemRef_Op<"load", [...] {
 使用上
 
 ```cpp
-if (auto memEffect = llvm::dyn_cast<MemoryEffectInterface>(op)) {
+if (auto memEffect = llvm::dyn_cast<MemoryEffectOpInterface>(op)) {
   SmallVector<MemoryEffects::EffectInstance> effects;
   memEffect.getEffects(effects); // 这样effects中就会收集到op的MemoryEffects.
 }
@@ -348,7 +348,15 @@ if (isa<RegionBranchOpInterface>(op)) {
 
 `Region *` -> 这个 `RegionBranchOpInterface` 中的 `region` 即可，常用 `block->getParent()` 获得
 
+- RegionSuccessor
+
+表示 `a successor of a region`，可以是 `RegionBranchOpInterface`(parentOp) 本身，也可以是其 `region`。
+
+`getSuccessor()` 获得 `Region *`， `getSuccessorInputs()` 获得该 `region` 的 input。
+
 - void getSuccessorRegions(mlir::RegionBranchPoint point, mlir::SmallVectorImpl<RegionSuccessor> successors)
+
+返回 `RegionBranchOpInterface` 的 `RegionSuccessor`，例如 `scf.if` 就会返回 `then region` 和 `else region`。
 
 ```cpp
 SmallVector<RegionSuccessor, 2> successors;

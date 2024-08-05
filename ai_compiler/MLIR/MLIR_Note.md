@@ -1,14 +1,24 @@
-# [MLIR] Basic
+# [MLIR] Code Note
 
 ## 工欲善其事，必先利其器
 
-1.小学一点
+### 推荐项目
 
-推荐个mlir的项目，bazel确实是好东西
+- 学习 mlir 的项目
 
-[https://github.com/j2kun/mlir-tutorial](https://github.com/j2kun/mlir-tutorial)
+[mlir-tutorial](https://github.com/j2kun/mlir-tutorial) 使用 `bazel` 构建项目，相比 `cmake` 构建个人感觉更适合新手。
 
-2.跳转工具clangd
+- 可以抄代码的项目
+
+[IREE](https://github.com/iree-org/iree) 架构、风格上很有 Google 的风范。
+
+[ByteIR](https://github.com/bytedance/byteir) ，字节开源项目。
+
+### 跳转工具clangd
+
+`vscode` 专属。
+
+1.首先我们需要生成 `compile_commands.json`，以编译 `llvm` 为例：
 
 - 如果是cmake编译
 
@@ -28,49 +38,50 @@ cmake --build . -- ${MAKEFLAGS}
 cmake --build . --target check-mlir
 ```
 
-生成的compile_commands.json在 `build` 目录下，复制到llvm-project目录即可
+生成的 `compile_commands.json` 在 `build` 目录下，复制到llvm-project目录即可
 
 - 如果是bazel编译
 
-  在BUILD文件配置一下下面的内容，再bazel run 一下就可以编译出compile_commands.json
-  详情自学：[https://github.com/hedronvision/bazel-compile-commands-extractor/tree/main](https://github.com/hedronvision/bazel-compile-commands-extractor/tree/main)
+在BUILD文件配置一下下面的内容，再bazel run 一下就可以编译出compile_commands.json
+详情自学：[https://github.com/hedronvision/bazel-compile-commands-extractor/tree/main](https://github.com/hedronvision/bazel-compile-commands-extractor/tree/main)
 
-  (1) 修改WORKSPACE，添加
-  ```bash
-  load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+(1) 修改WORKSPACE，添加
 
-  http_archive(
-      name = "hedron_compile_commands",
+```bash
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-      # 建议把下面两处 commit hash 换成 github 上最新的版本
-      url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/ed994039a951b736091776d677f324b3903ef939.tar.gz",
-      strip_prefix = "bazel-compile-commands-extractor-ed994039a951b736091776d677f324b3903ef939",
-  )
+http_archive(
+    name = "hedron_compile_commands",
 
-  load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
-  hedron_compile_commands_setup()
+    # 记得把下面两处 commit hash 换成 github 上最新的版本
+    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/ed994039a951b736091776d677f324b3903ef939.tar.gz",
+    strip_prefix = "bazel-compile-commands-extractor-ed994039a951b736091776d677f324b3903ef939",
+)
 
-  ```
+load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+hedron_compile_commands_setup()
 
-  (2) 在根目录下的 `BUILD.bazel` 中添加下面语句
+```
 
-  ```bash
-  load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
+(2) 在根目录下的 `BUILD.bazel` 中添加下面语句
 
-  refresh_compile_commands(
-      name = "refresh_compile_commands",
-      # 指定目标 target 及其编译选项/参数（.bazelrc 中已有的参数/选项无需重复添加）
-      targets = {
-        "//:my_output_1": "--important_flag1 --important_flag2=true"
-      },
-  )
-  ```
+```bash
+load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
-  (3) 运行 `bazel run :refresh_compile_commands`
+refresh_compile_commands(
+    name = "refresh_compile_commands",
+    # 指定目标 target 及其编译选项/参数，例如 `mlir-opt` 、`config=clangd`
+    targets = {
+      "//:my_output_1": "--important_flag1 --important_flag2=true"
+    },
+)
+```
 
-- 配置vscode的clangd插件
+(3) 运行 `bazel run :refresh_compile_commands`
 
-ctrl + p 输入 clangd，先点击 下载language server；然后 加 settings.json , ctrl + p → '> 打开工作区设置json’
+2.然后，配置vscode的clangd插件
+
+`ctrl + p` 输入 clangd，先点击 下载language server；然后 加 settings.json , `ctrl + p` 打开工作区设置json，将以下内入加入
 
 ```cpp
 {
@@ -82,11 +93,12 @@ ctrl + p 输入 clangd，先点击 下载language server；然后 加 settings.j
 }
 ```
 
-使用compile_commands.json主要是方便索引文件，特别是td生成的 `inc` 文件，但也可以人为从 `build/tools/mlir/include/mlir/xxx/xxx` 中找到编译出的inc
+使用compile_commands.json主要是方便索引文件，特别是td生成的 `inc` 文件，但也可以人为从 `build/tools/mlir/include/mlir/xxx/xxx` 中找到编译出的 `inc`。
 
-3. 代码格式
+### 代码格式
 
-- clang-format
+一般使用 `clang-format` 工具(或者基于此的 `lint.sh`)。
+
 安装
 ```bash
 apt-get install clang-format
@@ -106,24 +118,32 @@ clang-format -i path/to/your/file.cpp
 find path/to/your/project -name '*.cpp' -o -name '*.h' | xargs clang-format -i
 ```
 
+---
+
 ## Adaptor
 
 只有**operands没有results**的中间态，可以从adaptor中获得很多基础信息
 
-ConversionPattern相比RewriterPattern多了一个adaptor
+`ConversionPattern` 相比 `RewriterPattern` 需要多传递一个 `adaptor`
 
-- OpAdaptor的作用：封装了op的operands
-- ConversionPattern和RewritePatter的区别
-    - ConversionPattern常配合applyFullConversion/applyPartialConversion使用，用于dialect2dialect的op之间变换
-    - RewritePattern一般用于优化变换，常配合applyPatternAndFoldGreedily使用
+1.OpAdaptor的作用：封装了op的operands
+
+2.ConversionPattern和RewritePatter的区别
+
+- ConversionPattern常配合 **applyFullConversion/applyPartialConversion** 使用，用于dialect2dialect的op之间变换
+
+- RewritePattern一般用于优化变换，常配合 **applyPatternAndFoldGreedily** 使用
 
 ```cpp
+// OpConversionPattern
 struct AbsOpToMathAbsConverter : public OpConversionPattern<mhlo::AbsOp> {
   using OpConversionPattern<mhlo::AbsOp>::OpConversionPattern;
   LogicalResult
   matchAndRewrite(mhlo::AbsOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const final {
 ...
+
+// OpRewritePattern
 struct TransposeSliceLayoutPattern : public OpRewritePattern<mhlo::SliceOp> {
   using OpRewritePattern<mhlo::SliceOp>::OpRewritePattern;
   LogicalResult
@@ -153,41 +173,48 @@ mlir/include/mlir/IR/Attribute.h
 - ArrayAttr
 - DictionaryAttr
 
-常用方法
+常用方法：
 
-使用 rewriter.getI64IntegerAttr或builder.getI64IntegerAttr可以创建这类Attr
+1.使用 `OpBuilder` 可以创建这类 `Attr`，例如
+rewriter.getI64IntegerAttr 或builder.getI64IntegerAttr。
 
-- src: AttrTy
-    - ::get()
-      例如从SmallVector<Attribute>变成ArrayAttr
+2.src: AttrTy
+- get() 例如从SmallVector<Attribute>变成ArrayAttr
+  ```cpp
+  SmallVector<Attribute, 8> mappings;
+  ArrayAttr tmp = ArrayAttr::get(context, mappings)
+  ```
 
-        ```cpp
-        SmallVector<Attribute, 8> mappings;
-        ArrayAttr tmp = ArrayAttr::get(context, mappings)
-        ```
+- getName()
 
-    - getName()
-    - setValue()
-    - getValue()
-    对于IntegertAttr会返回APInt，之后一般可以接 `getSExtValue()` ，来将APInt转为*int64_t*
+- setValue()
+
+- getValue() 对于IntegertAttr会返回APInt，之后一般可以接 `getSExtValue()` ，来将APInt转为**int64_t**
+
 - src : operation*
-    - getAttr / getAttrOfType ，一般get完之后要cast到对应的AttrType，例如
-    `op->getAttr(getAliasAttrKey()).dyn_cast_or_null<mlir::IntegerAttr>()`
-    `op->getAttrOfType<DenseI64ArrayAttr>`
-    - hasAttr / hasAttrOfType
-    - setAttr(StringRef name, Attribute value)
-        - name可以`constexpr llvm::StringLiteral` 形式定义在头文件中
-        - funcOp→setAttr(attrName, IntegerAttr::get(intType, 1));
-    - removeAttr
-    - func::FuncOp::setResultAttr
+  - getAttr / getAttrOfType ，一般get完之后要cast到对应的AttrType，例如
+    ```cpp
+    op->getAttr(getAliasAttrKey()).dyn_cast_or_null<mlir::IntegerAttr>()
+    op->getAttrOfType<DenseI64ArrayAttr>
+    ```
+
+  - hasAttr / hasAttrOfType
+
+  - setAttr(StringRef name, Attribute value)
+    - name可以`constexpr llvm::StringLiteral` 形式定义在头文件中
+    - funcOp→setAttr(attrName, IntegerAttr::get(intType, 1));
+
+  - removeAttr
+
+  - func::FuncOp::setResultAttr
 
 ### operation、attribute、type关系
 
-| 专用指针 | 通用指针 | 值 |
-| --- | --- | --- |
-| AddOp | Operation * | Operation |
-| IntegerType | Type | TypeStorage |
-| IntegerAttr | Attribute | AttributeStorage |
+| 专用指针      | 通用指针     | 值               |
+|-------------|-------------|------------------|
+| AddOp       | Operation * | Operation        |
+| IntegerType | Type        | TypeStorage      |
+| IntegerAttr | Attribute   | AttributeStorage |
 
 ---
 
@@ -197,15 +224,40 @@ mlir/include/mlir/IR/Attribute.h
 mlir/include/mlir/IR/Block.h
 ```
 
-op→getBlock()返回的是*Block
+Block 包含 `BlockArgument`（使用getArguements()获得）和 `BlockOperand`
 
-Block内可以walk
+### BlockArgument
 
-```cpp
-Operation &workOp : rootBlock->getOperations()
-```
+继承自 `Value`。
 
-Block包含BlockArguement（使用getArguements()获得）和BlockOperand
+`Block *getOwner()` 返回该arg属于哪个block。
+
+`unsigned getArgNumber()` 返回该arg的index。
+
+### BlockOperand
+
+继承自`IROperand`。
+
+`unsigned getOperandNumber()` 返回该operand的index。
+
+### 使用
+
+1.返回 Block
+
+- `Operation *` -> `getBlock()`
+- `Value` -> `getParentBlock()`
+
+
+2.遍历block
+- walk
+  ```cpp
+  block->walk([&](Operation *op) {...
+  ```
+
+- 只遍历同层op
+  ```cpp
+  Operation &workOp : rootBlock->getOperations()
+  ```
 
 ---
 
@@ -229,7 +281,7 @@ bufferization：将逻辑计算语义的tensor转为物理内存语义的buffer
 
 ### one-shot-bufferize
 
-（这部分来自大佬的笔记）
+（copy from大佬）
 
 ```cpp
 mlir/lib/Dialect/Bufferization/IR/BufferizableOpInterface.cpp
@@ -313,12 +365,12 @@ func.func @matmul(%arg0: memref<12x9xf32, strided<[?, ?], offset: ?>>, %arg1: me
 形式：将写好的pattens加入RewriterPatternSet并设置benefit，再apply
 
 ```cpp
-	void runOnOperation() override {
-		RewritePatternSet patterns(&getContext());
-		patterns.add<xxxx>(patterns.getContext(), /*benefit*/2)
-		if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))));
-			return signalPassFailure();
-	}
+void runOnOperation() override {
+	RewritePatternSet patterns(&getContext());
+	patterns.add<xxxx>(patterns.getContext(), /*benefit*/2)
+	if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))));
+		return signalPassFailure();
+}
 ```
 
 常见的apply形式:
@@ -482,7 +534,8 @@ public:
 MLIR中的数据流图是由Operation和Value构成的：（use-def chain）
 
 - Value的值要么来自于Operation的result，要么来自于BlockArgument
-    - 调用getDefiningOp时，BlockArguement会返回null
+    - 调用getDefiningOp时，BlockArgument会返回null
+
 - 每个Operation的Operand都是到Value的指针
 
 Operation都包含Results和Operands；Results中包含多个OpResult实例，Operands中包含多个OpOperand实例
@@ -501,7 +554,7 @@ Operation都包含Results和Operands；Results中包含多个OpResult实例，Op
 for (auto operand : op.getOperands()) {
 	if (auto *def = op.getDefiningOp()) {
 	} else {
-		// BlockArguement
+		// BlockArgument
 	}
 }
 ```
@@ -521,11 +574,13 @@ for (auto &opOperand : op3.getOpOperands()) {
 ### value找op
 
 - getDefiningOp：可能返回nul
+
 - getUses ：返回OpOperand迭代器，即使用了这个value的OpOperand集合
-OpOperand &operand : value.getUses()
+  - OpOperand &operand : value.getUses()
+
 - getUsers ：返回Operation迭代器，即直接依赖于该value的operation集合
-user_iterator相当于对use_iterator使用getOwner()
-use.getOwner() → Operation*
+  - user_iterator相当于对use_iterator使用getOwner()
+  - use.getOwner() → Operation*
 
 ### dataflow framework
 
@@ -638,7 +693,7 @@ mlir/lib/IR/Dominance.cpp
 
 - Bool properlyDominates(T *a, Operation *b)
   - 如果a是Operation，则直接调用 properlyDominatesImpl
-  - 如果a是Value，且a是BlockArguement，则`dominates(blockArg.getOwner(), b->getBlock());`，反之properlyDominates((Operation *)a.getDefiningOp(), b)
+  - 如果a是Value，且a是BlockArgument，则`dominates(blockArg.getOwner(), b->getBlock());`，反之properlyDominates((Operation *)a.getDefiningOp(), b)
 
 - bool hasSSADominance(Block *block) -> hasSSADominance(block->getParent())
 - bool hasSSADominance(Region *region)
@@ -1363,7 +1418,7 @@ mlir/lib/IR/Operation.cpp
 - getBody() 返回当前op内部的block或region
 
 - getOperands()
-  - 如果operand没有defineOp，则代表是BlockArguement
+  - 如果operand没有defineOp，则代表是BlockArgument
 
 - bool isBeforeInBlock(Operation *other) 判断这个op是否在other之前，要求当前op和other都在同一block内
 
@@ -1932,7 +1987,7 @@ mlir/lib/Pass/Pass.cpp
 
 表示范围
 
-| ValueRange | ValueRange(ArrayRef<Value>) / ValueRange(ArrayRef<BlockArguement>) |
+| ValueRange | ValueRange(ArrayRef<Value>) / ValueRange(ArrayRef<BlockArgument>) |
 | --- | --- |
 | TypeRange | TypeRange(ArrayRef<Type> types) |
 | ValueTypeRange | 代表给定value的type |
@@ -2680,9 +2735,9 @@ if (auto intAttr = range.size.dyn_cast<Attribute>()) {
 
 ## Value
 
-找operation的方法
+`value` 只可能表现为 `BlockArgument` 和 `OpResult` 两种形式，所以从 `value` 找其对应 `operation` 的方法：
 
-- getDefiningOp：BlockArgument返回 null
+- getDefiningOp： BlockArgument 返回 null
 - getOwner()
     - OpResult ：返回拥有这个result的Operation
     - BlockArgument ：返回拥有这个blockarg的Block

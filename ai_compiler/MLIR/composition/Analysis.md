@@ -85,8 +85,9 @@ mlir/include/mlir/Analysis/Liveness.h
 mlir/bin/Analysis/Liveness.cpp
 ```
 
-对 op ->  Liveness(Operation *op)
-对 block -> liveness.getLiveness(block) -> LivenessBlockInfo
+- 对 op ->  Liveness(Operation *op)
+
+- 对 block -> liveness.getLiveness(block) -> LivenessBlockInfo
 
 ## AliasAnalysis
 
@@ -97,15 +98,15 @@ mlir/include/mlir/Analysis/AliasAnalysis/LocalAliasAnalysis.h
 mlir/lib/Analysis/AliasAnalysis/LocalAliasAnalysis.h
 ```
 
-- AliasResult: 两个location之间是否有关系
-  - Kind
-    - NoAlias
-    - MayAlias
-    - PartialAlias : 两个loc互相alias，但是部分重叠
-    - MustAlias
-  - isNO / isMay / isPartial / isMust -> bool
+1.AliasResult: 两个location之间是否有关系
+- Kind
+  - NoAlias
+  - MayAlias
+  - PartialAlias : 两个loc互相alias，但是部分重叠
+  - MustAlias
+- isNO / isMay / isPartial / isMust -> bool
 
-- AliasResult alias(Value lhs, Value rhs);
+2.AliasResult alias(Value lhs, Value rhs);
 
 ```cpp
 // 确定一个op是否对一个value有读/写行为
@@ -132,12 +133,17 @@ bool isOpReadOrWriteInplace(Operation *op, Value val) {
 }
 ```
 
-- collectUnderlyingAddressValues
-  - (Value, SmallVectorImpl<Value> &output)
-  - (OpResult result, unsigned maxDepth, DenseSet<Value> &visited, SmallVectorImpl<Value> &output)
-    - result.getOwner() -> ViewLikeOpInterface -> 继续调用 viewOp.getViewSource()
-    - result.getOwner() -> RegionBranchOpInterface
-  - (BlockArguement arg, unsigned maxDepth, DenseSet<Value> &visited, SmallVectorImpl<Value> &output)
+3.collectUnderlyingAddressValues
+
+重载了多种形式，常用的有以下输入：
+
+- (Value, SmallVectorImpl<Value> &output)
+
+- (OpResult result, unsigned maxDepth, DenseSet<Value> &visited, SmallVectorImpl<Value> &output)
+  - result.getOwner() -> ViewLikeOpInterface -> 继续调用 viewOp.getViewSource()
+  - result.getOwner() -> RegionBranchOpInterface
+
+- (BlockArguement arg, unsigned maxDepth, DenseSet<Value> &visited, SmallVectorImpl<Value> &output)
 
 ## SliceAnalysis
 
@@ -147,31 +153,34 @@ bool isOpReadOrWriteInplace(Operation *op, Value val) {
 - use : 读
 
 ```bash
-///    ____
-///    \  /  defs (in some topological order)
-///     \/
-///     op
-///     /\
-///    /  \  uses (in some topological order)
-///   /____\
+ ____
+ \  /  defs (in some topological order)
+  \/
+  op
+  /\
+ /  \  uses (in some topological order)
+/____\
 ```
 
-- getForwardSlice : 获得root op的use链 (向ir的结尾找)
+### getSlice
+
+1.getForwardSlice : 获得root op的use链 (向ir的结尾找)
 
 ```bash
-/// 从 0 开始追，可以获得 {9, 7, 8, 5, 1, 2, 6, 3, 4}
-///               0
-///    ___________|___________
-///    1       2      3      4
-///    |_______|      |______|
-///    |   |             |
-///    |   5             6
-///    |___|_____________|
-///      |               |
-///      7               8
-///      |_______________|
-///              |
-///              9
+从 0 开始追，可以获得 {9, 7, 8, 5, 1, 2, 6, 3, 4}
+
+              0
+   ___________|___________
+   1       2      3      4
+   |_______|      |______|
+   |   |             |
+   |   5             6
+   |___|_____________|
+     |               |
+     7               8
+     |_______________|
+             |
+             9
 ```
 
 输入， root可以是op，也可以是value
@@ -183,23 +192,24 @@ void getForwardSlice(Value root, SetVector<Operation *> *forwardSlice,
                      const ForwardSliceOptions &options = {});
 ```
 
-- getBackWardSlice : 获得root op的def链 (向ir的开头找)
+2.getBackWardSlice : 获得root op的def链 (向ir的开头找)
 
 ```bash
-/// 从 node 8 开始， 可以获得 {1, 2, 5, 3, 4, 6}
-/// ============================
-///
-///    1       2      3      4
-///    |_______|      |______|
-///    |   |             |
-///    |   5             6
-///    |___|_____________|
-///      |               |
-///      7               8
-///      |_______________|
-///              |
-///              9
+从 node 8 开始， 可以获得 {1, 2, 5, 3, 4, 6}
+
+   1       2      3      4
+   |_______|      |______|
+   |   |             |
+   |   5             6
+   |___|_____________|
+     |               |
+     7               8
+     |_______________|
+             |
+             9
 ```
+
+输入， root可以是op，也可以是value
 
 ```cpp
 void getBackwardSlice(Operation *op, SetVector<Operation *> *bac
@@ -209,9 +219,10 @@ void getBackwardSlice(Value root, SetVector<Operation *> *backwa
                       const BackwardSliceOptions &options = {});
 ```
 
-- SliceOptions
-  - TransitiveFilter filter : 设置遍历条件，当遍历到的节点不符合 filter 时停止(注意第一个遍历对象就是 rootOp)
-  - bool inclusive : 返回的 sliceSetVec中 是否包含 rootOp
+### SliceOptions
+- TransitiveFilter filter : 设置遍历条件，当遍历到的节点不符合 filter 时停止(注意第一个遍历对象就是 rootOp)
+
+- bool inclusive : 返回的 sliceSetVec中 是否包含 rootOp
 
 **ForwardSliceOptions** : using ForwardSliceOptions = SliceOptions;
 
@@ -219,7 +230,9 @@ void getBackwardSlice(Value root, SetVector<Operation *> *backwa
 
 ```cpp
 BackwardSliceOptions sliceOptions;
-sliceOptions.omitBlockArguments = true; // 不遍历 blockArg(可以理解为到这就结束)
+// 不遍历 blockArg(可以理解为到blockArg这就结束)
+sliceOptions.omitBlockArguments = true;
+
 // 所有加入backwardSlice的op都需要满足以下条件
 // 第一下会遍历本身
 sliceOptions.filter = [rootOp](Operation *slice) -> bool {
