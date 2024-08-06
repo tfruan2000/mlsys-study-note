@@ -587,8 +587,9 @@ tl.store(mid_ptr + pid, mid_value.to(inp_val.dtype))
 
 ->
 
-# triton.Config({"BLOCK_SIZE": m, "ITER_NUM": math.log2(m)} for m in [...])
 # 将数组 _tmp 前一半的元素与后一半的元素相乘，并将结果存储在前一半的位置
+# triton.Config({"BLOCK_SIZE": m} for m in [...])
+# "ITER_NUM" 为 BLOCK_SIZE 能整除2的次数
 # 以 BLOCK_SIZE = 16 为例，ITER_NUM=4
 # 例： x   _tmp[:BLOCK_SIZE // (2 ** 1)]   _tmp[BLOCK_SIZE // (2 ** 1):BLOCK_SIZE // (2 ** (x - 1))]
 #     1   _tmp[:8]                        _tmp[8:16]
@@ -596,8 +597,7 @@ tl.store(mid_ptr + pid, mid_value.to(inp_val.dtype))
 #     3   _tmp[:2]                        _tmp[2:4]
 #     4   _tmp[:1]                        _tmp[1:2]
 for x in tl.static_range(1, int(ITER_NUM), 1):
-    # 等下于 _tmp[:BLOCK_SIZE // (2 ** x)] = reduce_mul(_tmp[:BLOCK_SIZE // (2 ** x)], _tmp[BLOCK_SIZE // (2 ** x):BLOCK_SIZE // (2 ** (x - 1))])
-    _tmp[:BLOCK_SIZE // (2 ** x)] = _tmp[:BLOCK_SIZE // (2 ** x)] * _tmp[BLOCK_SIZE // (2 ** x):BLOCK_SIZE // (2 ** (x - 1))]
+    _tmp[:BLOCK_SIZE // (2 ** x)] = _tmp[:BLOCK_SIZE // (2 ** x)] * _tmp[BLOCK_SIZE // (2 ** x):(BLOCK_SIZE // (2 ** x)) * 2]
 # reduce(_tmp[:2])
 res = tl.reduce(_tmp[:BLOCK_SIZE // (2 ** (ITER_NUM - 1))], axis=0, combine_fn=reduce_mul)
 tl.store(mid_ptr + pid, res)

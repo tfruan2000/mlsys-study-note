@@ -287,20 +287,20 @@ bufferization：将逻辑计算语义的tensor转为物理内存语义的buffer
 mlir/lib/Dialect/Bufferization/IR/BufferizableOpInterface.cpp
 ```
 
-1） OneShotBufferize pass
+1.OneShotBufferize pass
 
 对于每个有 `BufferizableOpInterface` 的op都进行bufferize
 
 - 声明：mlir/include/mlir/Dialect/Bufferization/Transforms/Passes.td
-    - 1. 先基于tensor的SSA use-def链进行原位分析来确认哪些operand可以**in-place bufferize**.（尽量减少alloc和copy, 提高性能）
+    - 1) 先基于tensor的SSA use-def链进行原位分析来确认哪些operand可以**in-place bufferize**.（尽量减少alloc和copy, 提高性能）
         - destination-passing style op（继承`DestinationStyleOpInterface` ）： 某一个**operand和dst的buffer可复用**，所以分配了该operand的buffer后，无需再分配dst的buffer：eg: %t0 = tensor.insert %f into %dest[%idx]， buffer(%t0)和buffer(%dest)是完全一致的；
         - 非destination-passing style op：对每个OpOperand产生一个新的buffer allocation, eg：tensor.generate
         - 所有新allocate的buffer后续都会deallocate，不然会内存泄露
-    - 2.TensorCopyInsertion：对确定是**out-of-place的operands插入 copies**，insertTensorCopies()函数。
-    - 3. 调用bufferize接口bufferize()函数来实现bufferize. bufferizeOp()函数。
-    - 4. 函数签名的layout map由`function-boundary-type-conversion`选项单独控制，可选的参数有3种：`infer-layout-map`，`fully-dynamic-layout-map` and `identity-layout-map`， 默认是`infer-layout-map`。无法精确推测时，函数参数类型为fully dynamic layout maps。
-    - 5.  `bufferize-function-boundaries` 是一个用来对funcOp、returnOp、callOp进行bufferize的flag
-    - 6.funcArg一般可以bufferize，除非有 `bufferization.writable = false`
+    - 2) TensorCopyInsertion：对确定是**out-of-place的operands插入 copies**，insertTensorCopies()函数。
+    - 3) 调用bufferize接口bufferize()函数来实现bufferize. bufferizeOp()函数。
+    - 4) 函数签名的layout map由`function-boundary-type-conversion`选项单独控制，可选的参数有3种：`infer-layout-map`，`fully-dynamic-layout-map` and `identity-layout-map`， 默认是`infer-layout-map`。无法精确推测时，函数参数类型为fully dynamic layout maps。
+    - 5)  `bufferize-function-boundaries` 是一个用来对funcOp、returnOp、callOp进行bufferize的flag
+    - 6) funcArg一般可以bufferize，除非有 `bufferization.writable = false`
 - 实现：mlir/lib/Dialect/Bufferization/Transforms/Bufferize.cpp
     - struct OneShotBufferizePass {void runOnOperation() override }
         - Configure type converter， 先获得 unknownTypeConversionOption：
@@ -315,7 +315,7 @@ mlir/lib/Dialect/Bufferization/IR/BufferizableOpInterface.cpp
         - createLoopInvariantCodeMotionPass()
 - 示例：mlir/test/Dialect/Bufferization/Transforms/one-shot-module-bufferize-out-params.mlir, mlir/test/Dialect/Bufferization/Transforms/one-shot-module-bufferize.mlir
 
-2) transform IR : transform.bufferization.one_shot_bufferize 有很多可选的参数
+2.transform IR : transform.bufferization.one_shot_bufferize 有很多可选的参数
 
 - layout{IdentityLayoutMap} { bufferize_function_boundaries = true }
 - {bufferize_function_boundaries = true }
@@ -438,19 +438,17 @@ struct TransposeSliceLayoutPattern : public OpRewritePattern<mhlo::SliceOp> {
 mlir/lib/Transforms/Utils/DialectConversion.cpp
 ```
 
-Value ConversionValueMapping::lookupOrDefault(Value from, Type desiredType)
-
 即dialect_a中的op对应转换到dialect_b中，例如vector dialect → gpu dialect
 
 dialect conversion一般包含op conversion和type conversion
 
 ### op conversion
 
-1.OpRewritePattern
-
 ```cpp
 mlir/include/mlir/IR/PatternMatch.h
 ```
+
+1.OpRewritePattern
 
 以vector2gpu为例
 
@@ -475,6 +473,22 @@ void mlir::populateArithToSPIRVPatterns(RewritePatternSet &patterns) {
 	...
 }
 } // namespace
+```
+
+2.OpInterfaceRewritePattern
+
+专门匹配某种 `OpInterface` 的pattern。例如
+
+```cpp
+struct ViewLikeOpXXXPattern
+    : public OpInterfaceRewritePattern<ViewLikeOpInterface> {
+  ViewLikeOpXXXPattern(MLIRContext *ctx)
+      : OpInterfaceRewritePattern<ViewLikeOpInterface>(ctx) {}
+  LogicalResult mathAndRewrite(ViewLikeOpInterface viewOp,
+                               PatternRewriter &rewriter) const override {
+    ...
+  }
+}
 ```
 
 ### type conversion
@@ -686,22 +700,22 @@ mlir/lib/IR/Dominance.cpp
 
 下面的 `T` 可以是 `Operation *` 或 `Value *`
 
-- bool dominates(T *a, Operation *b): 判断a是否支配b
-  - 如果a是Operation，则返回 `a == b || properlyDominates(a, b)`
-  - 如果a是Value，则返回 `(Operation *)a.getDefiningOp() == b || properlyDominates(a, b)`
+1.bool dominates(T *a, Operation *b): 判断a是否支配b
+- 如果a是Operation，则返回 `a == b || properlyDominates(a, b)`
+- 如果a是Value，则返回 `(Operation *)a.getDefiningOp() == b || properlyDominates(a, b)`
 
 
-- Bool properlyDominates(T *a, Operation *b)
-  - 如果a是Operation，则直接调用 properlyDominatesImpl
-  - 如果a是Value，且a是BlockArgument，则`dominates(blockArg.getOwner(), b->getBlock());`，反之properlyDominates((Operation *)a.getDefiningOp(), b)
+2.Bool properlyDominates(T *a, Operation *b)
+- 如果a是Operation，则直接调用 properlyDominatesImpl
+- 如果a是Value，且a是BlockArgument，则`dominates(blockArg.getOwner(), b->getBlock());`，反之properlyDominates((Operation *)a.getDefiningOp(), b)
 
-- bool hasSSADominance(Block *block) -> hasSSADominance(block->getParent())
-- bool hasSSADominance(Region *region)
-  - 判断region中的ops是否都满足SSA支配关系
-  - 如果region中不满足，则无法分析出dominanceInfo，遍历order需要修改
+3.bool hasSSADominance(Block *block) -> hasSSADominance(block->getParent())
+4.bool hasSSADominance(Region *region)
+- 判断region中的ops是否都满足SSA支配关系
+- 如果region中不满足，则无法分析出dominanceInfo，遍历order需要修改
 
-- DominanceInfoNode *getRootNode(Region *region)
-    - 获得给定region的root dominance node，输入的region必须有多block
+5.DominanceInfoNode *getRootNode(Region *region)
+- 获得给定region的root dominance node，输入的region必须有多block
 
 ### DominanceInfoNode
 
@@ -735,8 +749,6 @@ mlir/lib/IR/Dominance.cpp
   }
 ```
 
-
-
 ---
 
 ## Func
@@ -757,11 +769,12 @@ mlir/include/mlir/IR/IRMapping.h
 
 用法：
 
-- 构造
-    - map(Value from, Value to)
-    - map(Block *from, Block *to)
-    - map(Operation *from, Operation *to)
-- lookupOrValue(from, value);
+1.构造
+- map(Value from, Value to)
+- map(Block *from, Block *to)
+- map(Operation *from, Operation *to)
+
+2.lookupOrValue(from, value);
 - lookupOrDefault <=> lookupOrValue(from, from);
 
 ```cpp
@@ -785,10 +798,10 @@ for (auto &opOperand : op3.getOpOperands()) {
 
 ## llvm
 
-常用
-
 ### LogicalResult
+
 - 函数内用 success() / failure() 作为返回
+
 - 外部调用判断 succeeded / failed
 
 ```cpp
@@ -826,102 +839,115 @@ Value res = *a
 ```
 
 ### isa
-isa : 不能在cast之后使用isa，有类似场景请用dyn_cast
-isa_and_nonnull / isa_and_present：允许op为null作为输入，返回null
+
+- isa : 不能在cast之后使用isa，有类似场景请用dyn_cast
+
+- isa_and_nonnull / isa_and_present：允许op为null作为输入，返回null
+
 > 两者作用完全相同，未来的llvm将弃用 `isa_and_nonnull` ，推荐使用 `isa_and_present`
 
 ### cast
 - cast ：直接转换，失败时报错
+
 - cast_or_null ：允许op为null作为输入，返回null
+
 - dyn_cast ： 尝试转换，失败时返回null，op为null时报错
+
 - dyn_cast_if_present / dyn_cast_or_null ：尝试转换，失败时返回null，op为null时返回null
-    ```cpp
-    template <class X, class Y> auto dyn_cast_or_null(const Y &Val) {
-      return dyn_cast_if_present<X>(Val);
-    }
-    ```
-    例子：
-    ```cpp
-    Value mlir::getValueOrCreateConstantIndexOp(OpBuilder &b,
-                                                Location loc,
-                                                OpFoldResult ofr) {
-      if (auto value = llvm::dyn_cast_if_present<Value>(ofr))
-        return value;
-      auto attr = dyn_cast<IntegerAttr>(llvm::dyn_cast_if_present<Attribute>(ofr));
-      assert(attr && "expected the op fold result casts to an integer attribute");
-      return b.create<arith::ConstantIndexOp>(loc, attr.getValue().getSExtValue());
-    }
-    ```
+  ```cpp
+  template <class X, class Y> auto dyn_cast_or_null(const Y &Val) {
+    return dyn_cast_if_present<X>(Val);
+  }
+  ```
+  例子：
+  ```cpp
+  Value mlir::getValueOrCreateConstantIndexOp(OpBuilder &b,
+                                              Location loc,
+                                              OpFoldResult ofr) {
+    if (auto value = llvm::dyn_cast_if_present<Value>(ofr))
+      return value;
+    auto attr = dyn_cast<IntegerAttr>(llvm::dyn_cast_if_present<Attribute>(ofr));
+    assert(attr && "expected the op fold result casts to an integer attribute");
+    return b.create<arith::ConstantIndexOp>(loc, attr.getValue().getSExtValue());
+  }
+  ```
 
 ### all_of / any_of / for_each
 ```cpp
 llvm/include/llvm/ADT/STLExtras.h
 ```
 
-- all_of ：判断是否所有元素都满足条件
-    - 用法
-        ```cpp
-        if (llvm::all_of(inputs, [](Value input) {
-          return input.getType().isa<ShapedType>();
-        });
-        ```
-    - 实现
-        ```cpp
-        template <typename R, typename UnaryPredicate>
-        bool all_of(R &&Range, UnaryPredicate P) {
-          return std::all_of(adl_begin(Range), adl_end(Range), P);
-        }
-        ```
+1.all_of ：判断是否所有元素都满足条件
 
-- any_of ：判断是否有元素满足条件
-    - 用法
-        ```cpp
-        	if (llvm::any_of(op->getRegions(), [](Region &r) {
-        			return r.getBlocks().size > 1;
-        		}))
-        	return failure();
-        ```
-    - 实现
-        ```cpp
-        template <typename R, typename UnaryPredicate>
-        bool any_of(R &&Range, UnaryPredicate P) {
-          return std::any_of(adl_begin(Range), adl_end(Range), P);
-        }
-        ```
-
-- none_of ：判断是否没有元素满足条件
-
-- for_each ：对每个元素执行操作
-
-- llvm::enumerate
-    - 返回一个pair，first是index，second是value，直接对元素使用 `.index()` 和 `.value()` 即可
-    - 也可以使用 `auto [idx, val] : llvm::enumerate(inputs)` / `auto [idx, val1, val2] : llvm::enumerate(inputs, outputs)`
-    - 用法
-        ```cpp
-        auto isConsecute [](ArrayRef<int64_t> array) -> bool {
-          return llvm::all_of(llvm::enumerate(array), [array](auto iter)) {
-            return iter.index() + array.front() == iter.value();
-          });
-        };
-        ```
-
-- llvm::zip
-
-	- 遍历时使用 `std::get<0>` 和 `std::get<1>` 来获得值
+- 用法
   ```cpp
-  for (const auto &it :llvm::enumerate(llvm::zip(valAVec, valBVec))) {
-	    Value aVal = std::get<0>(it.value());
-	    Value bVal = std::get<1>(it.value());
-	```
+  if (llvm::all_of(inputs, [](Value input) {
+    return input.getType().isa<ShapedType>();
+  });
+  ```
 
-  - 比较
+- 实现
+  ```cpp
+  template <typename R, typename UnaryPredicate>
+  bool all_of(R &&Range, UnaryPredicate P) {
+    return std::all_of(adl_begin(Range), adl_end(Range), P);
+  }
+  ```
+
+2.any_of ：判断是否有元素满足条件
+
+- 用法
+  ```cpp
+  	if (llvm::any_of(op->getRegions(), [](Region &r) {
+  			return r.getBlocks().size > 1;
+  		}))
+  	return failure();
+  ```
+
+- 实现
+  ```cpp
+  template <typename R, typename UnaryPredicate>
+  bool any_of(R &&Range, UnaryPredicate P) {
+    return std::any_of(adl_begin(Range), adl_end(Range), P);
+  }
+  ```
+
+3.none_of ：判断是否没有元素满足条件
+
+4.for_each ：对每个元素执行操作
+
+```cpp
+llvm::for_each(outputs, [&](Value val) { types.emplace_back(val.getType()); });
+```
+
+5.llvm::enumerate
+- 返回一个pair，first是index，second是value，直接对元素使用 `.index()` 和 `.value()` 即可
+- 也可以使用 `auto [idx, val] : llvm::enumerate(inputs)` / `auto [idx, val1, val2] : llvm::enumerate(inputs, outputs)`
+- 用法
+  ```cpp
+  auto isConsecute [](ArrayRef<int64_t> array) -> bool {
+    return llvm::all_of(llvm::enumerate(array), [array](auto iter)) {
+      return iter.index() + array.front() == iter.value();
+    });
+  };
+  ```
+
+6.llvm::zip
+- 遍历时使用 `std::get<0>` 和 `std::get<1>` 来获得值
+  ```cpp
+   for (const auto &it :llvm::enumerate(llvm::zip(valAVec, valBVec))) {
+      Value aVal = std::get<0>(it.value());
+      Value bVal = std::get<1>(it.value());
+  ```
+
+- 比较
   ```cpp
   for (const auto &[operand, arg] :
        llvm::zip(op->getOperands(), body->getArguements())) {
     if (operand != arg)
       return failure();
   }
-  ```
+   ```
 
 ### function
 
@@ -1562,7 +1588,7 @@ void MapOp::build(
 
 使用 `OpBuilder` 来 create
 
-#### 根据op的build函数create
+1.根据op的build函数create
 
 create<OpTy>(…) : 查看
 
@@ -1570,7 +1596,7 @@ create<OpTy>(…) : 查看
 
 - `build/tools/mlir/include/mlir/Dialect/XXX/IR/XXXOps.h.inc`中对应op的 `build` 函数
 
-#### 根据operationState来create
+2.根据operationState来create
 
 create(OperationState state)
 ```cpp
@@ -1691,43 +1717,49 @@ public:
 
 常见用法：
 
-- Attribute / Value 转为 OpFoldResult
-  - 直接包起来`OpFoldResult{b.getI64IntegerAttr(1)}`
-  - 使用 `getAsOpFoldResult` 函数
-    ```cpp
-    OpFoldResult getAsOpFoldResult(Value val);
-    SmallVector<OpFoldResult> getAsOpFoldResult(ValueRange values);
-    SmallVector<OpFoldResult> getAsOpFoldResult(ArrayAttr arrayAttr);
-    ```
+1.Attribute / Value 转为 OpFoldResult
 
-- 一些op的fold行为
-    ```cpp
-    // mlir/lib/Dialect/Complex/IR/ComplexOps.cpp
-    OpFoldResult NegOp::fold(FoldAdaptor adaptor) {
-      // complex.neg(complex.neg(a)) -> a
-      if (auto negOp = getOperand().getDefiningOp<NegOp>())
-        return negOp.getOperand();
+- 直接包起来`OpFoldResult{b.getI64IntegerAttr(1)}`
 
-      return {};
-    }
-    OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
-      // complex.log(complex.exp(a)) -> a
-      if (auto expOp = getOperand().getDefiningOp<ExpOp>())
-        return expOp.getOperand();
+- 使用 `getAsOpFoldResult` 函数
+  ```cpp
+  OpFoldResult getAsOpFoldResult(Value val);
+  SmallVector<OpFoldResult> getAsOpFoldResult(ValueRange values);
+  SmallVector<OpFoldResult> getAsOpFoldResult(ArrayAttr arrayAttr);
+  ```
 
-      return {};
-    }
-    ```
-- getAsOpFoldResult(ValueRange values)
-    遍历values，尝试将value转化为constant Attribute，如果失败则返回value
-    ```cpp
-    Attribute attr;
-    if (matchPattern(value, m_Constant(&attr)))
-      return attr;
-    return value;
-    ```
+2.一些op的fold行为
 
-- std::optional<int64_t> getconstantIntValue(OpFoldResult v)
+```cpp
+// mlir/lib/Dialect/Complex/IR/ComplexOps.cpp
+OpFoldResult NegOp::fold(FoldAdaptor adaptor) {
+  // complex.neg(complex.neg(a)) -> a
+  if (auto negOp = getOperand().getDefiningOp<NegOp>())
+    return negOp.getOperand();
+
+  return {};
+}
+OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
+  // complex.log(complex.exp(a)) -> a
+  if (auto expOp = getOperand().getDefiningOp<ExpOp>())
+    return expOp.getOperand();
+
+  return {};
+}
+```
+
+3.getAsOpFoldResult(ValueRange values)
+
+遍历values，尝试将value转化为constant Attribute，如果失败则返回value
+```cpp
+Attribute attr;
+if (matchPattern(value, m_Constant(&attr)))
+  return attr;
+return value;
+```
+
+4.std::optional<int64_t> getconstantIntValue(OpFoldResult v)
+
 ```cpp
 std::optional<int64_t> getconstantIntValue(OpFoldResult v) {
   if (auto val = llvm::dyn_cast_if_present<Value>(ofr)) {
@@ -1741,10 +1773,9 @@ std::optional<int64_t> getconstantIntValue(OpFoldResult v) {
     return intAttr.getValue().getSExtValue();
   return std::nullopt;
 }
-
 ```
 
-- bool isConstantIntValue(OpFoldResult ofr, int64_t value)
+5.bool isConstantIntValue(OpFoldResult ofr, int64_t value)
 
 ---
 
@@ -1787,113 +1818,112 @@ Pattern TileParallelofConvOpUseRange with benefit(9) {
 
 ### 写一个 pass
 
-- Passes.td中定义pass的基本信息（描述、作用对象）
-  include/xxx/Transforms/Passes.td  （xxxx一般为project名字，例如iree，一般也会定义相应的namespace `mlir::iree`）
+1.Passes.td中定义pass的基本信息（描述、作用对象）
 
-    ```cpp
-    def passNamePass : Pass<"pass-flag">, "该pass的作用对象" > { // 作用域可以为 func::FuncOp 或 mlir::ModuleOp
-    	let summary = "";
-    	let description = [{
-    		more detail
+include/xxx/Transforms/Passes.td  （xxxx一般为project名字，例如iree，一般也会定义相应的namespace `mlir::iree`）
 
-    		For example, consider the following input:
+```cpp
+def passNamePass : Pass<"pass-flag">, "该pass的作用对象" > { // 作用域可以为 func::FuncOp 或 mlir::ModuleOp
+	let summary = "";
+	let description = [{
+		more detail
+		For example, consider the following input:
+    ``` mlir
+	  ````
+    After running, we get the expected:
+    ``` mlir
+  	```
+  ]};
+  let constructor = "mlir::xxxx::createPassNamePass()";
+  let options = [
+  	Option<"OptionName", "option-tag", "option-input-type", /*default*/"default-option-input-value",
+  				 "Option description.">
+  ];
+  let dependentDialects = [
+  	// 例如：
+  	"func::FuncDialect";
+  	"linalg::LinalgDialect",
+  	"tensor::TensorDialect",
+  ];
 
-        ``` mlir
+2.Passed.h 中声明pass
 
-    	  ````
+include/xxx/Transforms/Passes.h
 
-        After running, we get the expected:
+```cpp
+std::unique_ptr<Pass> createPassNamePass();
+```
 
-        ``` mlir
+3.passName.cpp中定义pass的实现
 
-      	```
-      ]};
-      let constructor = "mlir::xxxx::createPassNamePass()";
-      let options = [
-      	Option<"OptionName", "option-tag", "option-input-type", /*default*/"default-option-input-value",
-      				 "Option description.">
-      ];
-      let dependentDialects = [
-      	// 例如：
-      	"func::FuncDialect";
-      	"linalg::LinalgDialect",
-      	"tensor::TensorDialect",
-      ];
+lib/xxx/Transforms/PassName.cpp
 
-- Passed.h 中声明pass
-  include/xxx/Transforms/Passes.h
-  ```cpp
-  std::unique_ptr<Pass> createPassNamePass();
-  ```
+```cpp
+//===- passNamePass.cpp -----------------------------------------*- cpp -*-===//
+//
+// description
+//
+//===----------------------------------------------------------------------===//
+// 头文件，常见的如下
+#inlcude "xxxx/xxx/Transforms/Passes.h"
+#include "mlir/Dialect/xxx" // #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/BuiltinAttribute.h"
+#include "mlir/IR/BuiltinType.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Region.h"
+#include "mlir/IR/Type.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 
-- passName.cpp中定义pass的实现
-  lib/xxx/Transforms/PassName.cpp
+#define DEBUG_TYPE "pass-flag"
 
-    ```cpp
-    //===- passNamePass.cpp -----------------------------------------*- cpp -*-===//
-    //
-    // description
-    //
-    //===----------------------------------------------------------------------===//
-    // 头文件，常见的如下
-    #inlcude "xxxx/xxx/Transforms/Passes.h"
-    #include "mlir/Dialect/xxx" // #include "mlir/Dialect/SCF/IR/SCF.h"
-    #include "mlir/IR/BuiltinAttribute.h"
-    #include "mlir/IR/BuiltinType.h"
-    #include "mlir/IR/Operation.h"
-    #include "mlir/IR/Region.h"
-    #include "mlir/IR/Type.h"
-    #include "mlir/Pass/Pass.h"
-    #include "mlir/Support/LLVM.h"
+using namespace mlir;
+using namespace mlir::xxxx;
 
-    #define DEBUG_TYPE "pass-flag"
+namespace{
+// 相关代码runOperation()写在匿名空间，匿名空间可以限制标识符的作用域，防止全局空间污染
+struct PassNamePass : public PassNamePassBase<PassNamePass> {
+	// explicit PassNamePass() = default(option-input-type optionName) {
+	// 	 this->optionName.setValue(optionName);
+	// }
+	explicit PassNamePass() = default;
 
-    using namespace mlir;
-    using namespace mlir::xxxx;
+	void runOnOperation() override {
+		// 根据td中的作用域来返回，如果pass的td定义的作用域是mlir::ModuleOp,则这里返回moduleOp。
+    // 如果pass.td中没有设置，则返回输入ir的top-level op
+		auto targetOp = getOperation();
+		MLIRContext *ctx = funcOp->getContext();
+		...
+		// 也可以使用pattern
+	}
 
-    namespace{
-    // 相关代码runOperation()写在匿名空间，匿名空间可以限制标识符的作用域，防止全局空间污染
-    struct PassNamePass : public PassNamePassBase<PassNamePass> {
-    	// explicit PassNamePass() = default(option-input-type optionName) {
-    	// 	 this->optionName.setValue(optionName);
-    	// }
-    	explicit PassNamePass() = default;
+}
+}; // end struct
 
-    	void runOnOperation() override {
-    		// 根据td中的作用域来返回，如果pass的td定义的作用域是mlir::ModuleOp,则这里返回moduleOp。
-        // 如果pass.td中没有设置，则返回输入ir的top-level op
-    		auto targetOp = getOperation();
-    		MLIRContext *ctx = funcOp->getContext();
-    		...
-    		// 也可以使用pattern
-    	}
+} //namespace
 
-    }
-    }; // end struct
+// std::unique_ptr mlir::xxxx::createPassNamePass(option-input-type optionName)
+std::unique_ptr mlir::xxxx::createPassNamePass(){
+	// return std::make_unique<PassNamePass>(optionName);
+	return std::make_unique<PassNamePass>();
+}
+```
 
-    } //namespace
+4.passName.mlir中添加对该pass的单元测试
 
-    // std::unique_ptr mlir::xxxx::createPassNamePass(option-input-type optionName)
-    std::unique_ptr mlir::xxxx::createPassNamePass(){
-    	// return std::make_unique<PassNamePass>(optionName);
-    	return std::make_unique<PassNamePass>();
-    }
-    ```
+mlir/test/XXX/PassName.mlir
 
-- passName.mlir中添加对该pass的单元测试
-  xxxx/xxx/Transforms/Test/PassName.mlir
+```cpp
+// RUN: mlir-opt -allow-unregistered-dialect %s -pass-pipeline='builtin.module(func.func(passname))' | FileCheck %s
 
-    ```cpp
-    // RUN: mlir-opt -allow-unregistered-dialect %s -pass-pipeline='builtin.module(func.func(passname))' | FileCheck %s
-
-    func.func @example() -> () {
-    	...
-      return ...
-    }
-    // CHECK-LABEL: @example
-    // CHECK-NEXT:
-    // CHECK-NEXT
-    ```
+func.func @example() -> () {
+	...
+  return ...
+}
+// CHECK-LABEL: @example
+// CHECK-NEXT:
+// CHECK-NEXT
+```
 
 > 使用 `mlir-tblgen` 主动生成 `pass.h.inc`
 > `mlir-tblgen -gen-op-defs Passes.td -o Passes.h.inc `
@@ -1906,64 +1936,68 @@ mlir/include/mlir/Pass/Pass.h
 mlir/lib/Pass/Pass.cpp
 ```
 
-- 在pipeline中添加pass
+1.在pipeline中添加pass
 
-    - addPass
-        ```cpp
-        // unique_ptr 申明独占资源，防止pass之间抢占资源
-        void addPass(std::unique_ptr<Pass> pass);
-        ```
-
-        ```cpp
-        void mlir::bufferization::buildBufferDeallocationPipeline(
-            OpPassManager &pm, const BufferDeallocationPipelineOptions &options) {
-          pm.addPass(memref::createExpandReallocPass(/*emitDeallocs=*/false));
-          pm.addPass(createCanonicalizerPass());
-          pm.addPass(createOwnershipBasedBufferDeallocationPass(options));
-          pm.addPass(createCanonicalizerPass());
-          pm.addPass(createBufferDeallocationSimplificationPass());
-          pm.addPass(createLowerDeallocationsPass());
-	      pm.addPass(createCSEPass());
-	      pm.addPass(createCanonicalizerPass());
-        }
-        ```
-
-    - addNestPass: 制定pass的作用op，常见的有FuncOp、ModuleOp，这个一般在 `pass.td` 中就定义该pass的作用域
-        ```cpp
-          void addNestedPass(std::unique_ptr<Pass> pass) {
-            nest<OpT>().addPass(std::move(pass));
-          }
-          OpPassManager &nest() {
-            return nest(OpT::getOperationName());
-          }
-        ```
-
-        ```cpp
-        void mlir::tosa::addTosaToLinalgPasses(
-            OpPassManager &pm, const TosaToLinalgOptions &options) {
-          if (!options.disableTosaDecompositions)
-            pm.addNestedPass<func::FuncOp>(tosa::createTosaOptionalDecompositions());
-          pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
-          pm.addNestedPass<func::FuncOp>(tosa::createTosaInferShapesPass());
-          pm.addNestedPass<func::FuncOp>(tosa::createTosaMakeBroadcastablePass());
-          ...
-          pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
-          pm.addNestedPass<func::FuncOp>(tosa::createTosaToLinalg());
-        }
-        ```
-
-- 保留当前IR的分析信息
-    - markAllAnalysesPreserved()
-    - markAnalysesPreserved(id)
+- addPass
 
 ```cpp
-  // If there was no change to the IR, we mark all analyses as preserved.
-  if (!changed)
-    return markAllAnalysesPreserved();
+// unique_ptr 申明独占资源，防止pass之间抢占资源
+void addPass(std::unique_ptr<Pass> pass);
+```
 
-  // We currently don't remove region operations, so mark dominance as
-  // preserved.
-  markAnalysesPreserved<DominanceInfo, PostDominanceInfo>();
+```cpp
+void mlir::bufferization::buildBufferDeallocationPipeline(
+    OpPassManager &pm, const BufferDeallocationPipelineOptions &options) {
+  pm.addPass(memref::createExpandReallocPass(/*emitDeallocs=*/false));
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createOwnershipBasedBufferDeallocationPass(options));
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createBufferDeallocationSimplificationPass());
+  pm.addPass(createLowerDeallocationsPass());
+	pm.addPass(createCSEPass());
+	pm.addPass(createCanonicalizerPass());
+}
+```
+
+- addNestPass: 制定pass的作用op，常见的有FuncOp、ModuleOp，这个一般在 `pass.td` 中就定义该pass的作用域
+
+```cpp
+  void addNestedPass(std::unique_ptr<Pass> pass) {
+    nest<OpT>().addPass(std::move(pass));
+  }
+  OpPassManager &nest() {
+    return nest(OpT::getOperationName());
+  }
+```
+
+```cpp
+void mlir::tosa::addTosaToLinalgPasses(
+    OpPassManager &pm, const TosaToLinalgOptions &options) {
+  if (!options.disableTosaDecompositions)
+    pm.addNestedPass<func::FuncOp>(tosa::createTosaOptionalDecompositions());
+  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+  pm.addNestedPass<func::FuncOp>(tosa::createTosaInferShapesPass());
+  pm.addNestedPass<func::FuncOp>(tosa::createTosaMakeBroadcastablePass());
+  ...
+  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+  pm.addNestedPass<func::FuncOp>(tosa::createTosaToLinalg());
+}
+```
+
+2.保留当前IR的分析信息
+
+- markAllAnalysesPreserved()
+
+- markAnalysesPreserved(id)
+
+```cpp
+// If there was no change to the IR, we mark all analyses as preserved.
+if (!changed)
+  return markAllAnalysesPreserved();
+
+// We currently don't remove region operations, so mark dominance as
+// preserved.
+markAnalysesPreserved<DominanceInfo, PostDominanceInfo>();
 ```
 
 ---
@@ -1987,13 +2021,13 @@ mlir/lib/Pass/Pass.cpp
 
 表示范围
 
-| ValueRange | ValueRange(ArrayRef<Value>) / ValueRange(ArrayRef<BlockArgument>) |
-| --- | --- |
-| TypeRange | TypeRange(ArrayRef<Type> types) |
-| ValueTypeRange | 代表给定value的type |
-| OperandRange  | TypeRange(ArrayRef<Operand> types) |
-| ResultRange | TypeRange(ArrayRef<OpResult> types) |
-| MutableOperandRange | 可以进行修改操作 append / assign / erase  |
+| ValueRange          | ValueRange(ArrayRef<Value>) / ValueRange(ArrayRef<BlockArgument>) |
+|---------------------|-------------------------------------------------------------------|
+| TypeRange           | TypeRange(ArrayRef<Type> types)                                   |
+| ValueTypeRange      | 代表给定value的type                                               |
+| OperandRange        | TypeRange(ArrayRef<Operand> types)                                |
+| ResultRange         | TypeRange(ArrayRef<OpResult> types)                               |
+| MutableOperandRange | 可以进行修改操作 append / assign / erase                          |
 
 ---
 

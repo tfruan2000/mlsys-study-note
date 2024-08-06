@@ -464,18 +464,12 @@ compiler支持多后端的方向：通过Linalg dialect
 
 ## trick
 
-### 打印ir的方法
+### 不同的环境变量
 
-- 在kernel后增加
-
-```python
-     kernel = add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
-     print(kernel.asm['ttir'])
-     print(kernel.asm['ttgir'])
-     print(kernel.asm['llir'])
-     print(kernel.asm['ptx'])
-```
-
-- 运行的时候加上 `MLIR_ENABLE_DUMP=1`
+- `MLIR_ENABLE_DUMP=1`
 
 dumps the IR before every MLIR pass Triton runs
+
+- `TRITON_PRINT_AUTOTUNING=1`
+
+打印每次选择的 config

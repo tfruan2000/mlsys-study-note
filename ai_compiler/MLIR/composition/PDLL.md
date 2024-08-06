@@ -3,13 +3,12 @@
 用pdll来实现pattern的match和rewrite
 
 
-
 ```cpp
 // PatternRuleImpl.cpp
 // 定义这些rewrite和constrain实现
 static Operation *buildOpImpl(PDLResultList &results, Value value) {
   // insert special rewrite logic here.
-  Operation *resultOp = ...; 
+  Operation *resultOp = ...;
   return resultOp;
 }
 
@@ -17,7 +16,7 @@ void registerRuleFunctions(RewritePatternSet &patterns) {
   // patterns.getPDLPatterns().registerRewriteFunction("BuildOp", buildOpImpl);
   // 或者采用下面的形式
   auto &patternModule = patterns.getPDLPatterns();
-    
+
 #define RegRewrite(name)                                                       \
   patternModule.registerRewriteFunction(#name, name##Impl)
 
