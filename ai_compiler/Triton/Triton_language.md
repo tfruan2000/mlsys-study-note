@@ -30,7 +30,7 @@ import triton.language as tl
 
 
 ```python
-@triton.autotune(
+def cfggen():
     configs=[
         triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),
         triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
@@ -41,7 +41,33 @@ import triton.language as tl
         triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
         triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
     ],
-    key=['M', 'N', 'K'],
+    return configs
+
+def prune_config(configs, named_args, **kwargs):
+    M = named_args["M"]
+    N = named_args["N"]
+    K = named_args["K"]
+    pruned_configs = []
+    for config in configs:
+        BLOCK_M = config.kwargs["BLOCK_SIZE_M"]
+        BLOCK_N = config.kwargs["BLOCK_SIZE_N"]
+        BLOCK_K = config.kwargs["BLOCK_SIZE_K"]
+        # Drop useless configs.
+        if ((M // BLOCK_M < 1) || (N // BLOCK_N < 1) || (K // BLOCK_K < 1)):
+            continue
+        if (......):
+            continue
+        pruned_configs.append(config)
+    # Only keep 4 configs.
+    if len(pruned_configs) > 4:
+        pruned_configs = pruned_configs[-4:]
+    return pruned_configs
+
+
+@triton.autotune(
+      configs=cfggen(),
+      prune_configs_by={'early_config_prune': prune_config},
+      key=["M", "N", "N"]
 )
 ```
 

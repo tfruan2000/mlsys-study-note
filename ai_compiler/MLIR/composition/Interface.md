@@ -35,6 +35,7 @@ bool InlinerInterface::isLegalToInline(Operation *op, Region *dest,
 ```
 
 ## DestinationStyleOpInterface
+
 linalOp都包含该interface
 
 ```cpp
@@ -43,24 +44,16 @@ OpOperandVector getDpsInitOperands()
 	其中每个元素为 `OpOperand *` ，使用opOperand->get()即可得到alue
 ```
 
-- BufferizableOpInterface：在oneShotBufferize pass会对有该inferface的op进行bufferize
+相关函数：
 
-- TilingInterface：对于有该interface的op可以cast成该interface `llvm::cast<TilingInterface>(op)`
-    - getLoopIteratorTypes：每个元素为utils::IteratorType，表示为utils::IteratorType::parallel或utils::IteratorType::reduction
-    - getIterationDomain：每个元素是一个Range
+1.hasPureTensorSemantics
 
-        ```cpp
-        if (auto intAttr = range.size.dyn_cast<Attribute>()) {
-        	tileSize = std::min(setTileSize, intAttr.cast<IntegerAttr>().getInt());
-        }
-        ```
+所有operand都不为memref，至少有一个为tensor
 
-- hasPureTensorSemantics
-  所有operand都不为memref，至少有一个为tensor
+2.hasPureBufferSemantics
 
-- hasPureBufferSemantics
+3.isScalar
 
-- isScalar
 `!llvm::isa<BaseMemRefType, TensorType>(opOperand->get().getType());`
 
 
@@ -70,18 +63,18 @@ OpOperandVector getDpsInitOperands()
 
 自定义的Dialect以及op并新增`TilingTnterface`可以参考Triton-Linalg中的[LinalgExtOpTilingInterface](https://github.com/Cambricon/triton-linalg/blob/master/lib/Dialect/LinalgExt/IR/LinalgExtOps.cpp)
 
-- TilingResult类
+1.TilingResult类
 
 ```cpp
 struct TilingResult {
     SmallVector<Operation *> tiledOps;
-    SmallVector<Value> tiledValues; // 来自
+    SmallVector<Value> tiledValues; // 作为被tiled value的result
 }
 ```
 
-- getLoopIteratorTypes：每个元素为utils::IteratorType，表示为utils::IteratorType::parallel或utils::IteratorType::reduction
+2.getLoopIteratorTypes：每个元素为utils::IteratorType，表示为utils::IteratorType::parallel或utils::IteratorType::reduction
 
-- getIterationDomain：每个元素是一个Range
+3.getIterationDomain：每个元素是一个Range
 
 ```cpp
 if (auto intAttr = range.size.dyn_cast<Attribute>()) {
@@ -138,6 +131,7 @@ copy op 有 read 和 write，其中 read 的 apply value 是A(读A), write 的 a
 - isPure(Operation *op)
 
 - op.getEffect()
+
 一般传入一个 `SmallVector<SideEffects::EffectInstance<MemoryEffects::Effect>, 4>`
 ```cpp
 void mlir::MemoryEffectOpInterface::getEffects(::llvm::SmallVectorImpl<::mlir::SideEffects::EffectInstance<::mlir::MemoryEffects::Effect>> & effects) {
@@ -182,10 +176,11 @@ if (auto memEffect = llvm::dyn_cast<MemoryEffectOpInterface>(op)) {
 ```
 
 - isMemoryEffectFree(Operation *op)
-    - NoMemoryEffect
-    - HasRecursiveMemoryEffects 且 所有 nested ops 都是 MemoryEffectFree
+  - NoMemoryEffect
+  - HasRecursiveMemoryEffects 且 所有 nested ops 都是 MemoryEffectFree
 
 - hasEffect(Operation *op, Value value = nullptr) : 判断op是否对value有副作用，如果没提供value，则判断op是否有副作用
+
 ```cpp
 template <typename... EffectTys>
 auto memOp = dyn_cast<MeoryEffectOpInterface>(op);
@@ -201,6 +196,7 @@ return llvm::any_of(effects, [&](MemoryEffects::Effect effect) {
 ```
 
 - onlyHasEffect
+
 例如判断只有read effect
 ```cpp
 if (!isMemoryEffectFree(op)) {
@@ -209,7 +205,6 @@ if (!isMemoryEffectFree(op)) {
     return failure();
 }
 ```
-
 
 - isOpTriviallyDead(Operation *op) : 当op没有使用者且不会引起副作用时，op就是trivially dead
 ```cpp
@@ -418,12 +413,9 @@ affine.parallel
 方法
 
 - 下界、上界、step
-
-    - `std::optional<::mlir::OpFoldResult> getSingleLowerBound`
-
-    - `std::optional<::mlir::OpFoldResult> getSingleUpperBound`
-
-    - `std::optional<::mlir::OpFoldResult> getSingleStep`
+  - `std::optional<::mlir::OpFoldResult> getSingleLowerBound`
+  - `std::optional<::mlir::OpFoldResult> getSingleUpperBound`
+  - `std::optional<::mlir::OpFoldResult> getSingleStep`
 
 - `mlir::Block::BlockArgListType getRegionIterArgs`
 - `mlir::ValueRange getYieldedValues()`
@@ -455,10 +447,10 @@ if (extractionOp && insertionOp) {
 ```
 
 - OpResult getTiedLoopResult(BlockArgument bbArg) / OpResult getTiedLoopResult(OpOperand *opOperand)
-    获得 `loopResults`（由getLoopResults()获得） 中该bbArg对应的值。
 
-```cpp
-// %a 对应 %res#0, %b 对应 %res#1
+获得 `loopResults`（由getLoopResults()获得） 中该bbArg对应的值。下面的ir中 %a 对应 %res#0, %b 对应 %res#1
+
+```mlir
 %res:2 = scf.forall(%arg3) in (1) shared_outs(%a = %empty0, %b =%empty1) -> (tensor<?xf32>, tensor<?xf32>)
 ```
 
@@ -467,13 +459,14 @@ if (extractionOp && insertionOp) {
 获得这个bbArg对应的loopInit，例如上面代码中 `%a` 对应的 loopInit 就是 `%empty0`
 
 
-
 ## SubsetOpInterface
 
 用法
 
 - `bool operatesOnEquivalentSubset(SubsetOpInterface candidate, function_ref<bool(Value, Value)> equivalenceFn)`
-    判断this op 是否和 candidate 一起负责一个subset
+
+判断this op 是否和 candidate 一起负责一个subset
+
 - `bool operatesOnDisjointSubset(SubsetOpInterface candidate, function_ref<bool(Value, Value)> equivalenceFn)`
 
 ```cpp
@@ -514,36 +507,24 @@ if (extractionOp && insertionOp) {
 子interface
 
 - SubsetExtractionOpInterface
-
     - `OpOperand getSourceOperand()`
+
 - SubsetInsertionOpInterface
-
-    - `OpOperand getSourceOperand()`
-
-    - `OpOperand getDestinationOperand()`
-
-    - `OpResult getUpdatedDestination()` : 返回该op的result_tensor
-
-        ```cpp
-        OpResult detail::defaultGetUpdatedDestination(Operation *op) {
-          auto dstOp = dyn_cast<DestinationStyleOpInterface>(op);
-          assert(dstOp && "getUpdatedDestination must be implemented for non-DPS ops");
-          auto insertionOp = cast<SubsetInsertionOpInterface>(op);
-          return dstOp.getTiedOpResult(&insertionOp.getDestinationOperand());
-        }
-        ```
-
+  - `OpOperand getSourceOperand()`
+  - `OpOperand getDestinationOperand()`
+  - `OpResult getUpdatedDestination()` : 返回该op的result_tensor
 
 相关使用：将extractOp和insertOp提升到loop外
 
 ```cpp
 // mlir/lib/Transforms/Utils/LoopInvariantCodeMotionUtils.cpp
 // Hoist the extraction/insertion ops.
+// LoopLikeOpInterface loopLike
 iterArg = loopLike.getRegionIterArgs()[iterArgIdx];
 OpResult loopResult = loopLike.getTiedLoopResult(iterArg);
 OpResult newLoopResult = loopLike.getLoopResults()->back();
-rewriter.moveOpBefore(extractionOp, loopLike);
-rewriter.moveOpAfter(insertionOp, loopLike);
+extractionOp->moveBefore(loopLike);
+insertionOp->moveAfter(loopLike);
 // insertOp外提后，就需要使用loop内还有的value来替换yield的输出
 rewriter.replaceAllUsesWith(insertionOp.getUpdatedDestination(),
                             insertionOp.getDestinationOperand().get());
@@ -558,7 +539,7 @@ insertionOp.getDestinationOperand().set(loopResult);
 
 以下面的代码为例
 
-```cpp
+```bash
 iterArg : %t
 loopResult : %5#0
 newLoopResult : %5#1
@@ -596,9 +577,7 @@ loopLike.getTiedLoopInit(iterArg)->get() : %arg0
 
 ## ViewLikeOpInterface
 
-tensor.expand_shape, tensor.collapse_shape,tensor.insert_slice, tensor.extract_slice,
-memref.expand_shape, memref.collapse_shape,
-memref.view, memref.reshape, memref.reshape, memref.reinterpret_cast, memref.cast 等
+memref.expand_shape, memref.collapse_shape, memref.view, memref.reshape, memref.reshape, memref.reinterpret_cast, memref.cast 等
 
 这些的src都是单operand，但是offset / size / stride属性是 `OperandRange`
 
@@ -625,7 +604,9 @@ memref.view, memref.reshape, memref.reshape, memref.reinterpret_cast, memref.cas
 
 ## OffsetSizeAndStrideOpInterface
 
-也属于 `ViewLikeOpInterface` ，可以通过 `llvm::cast<OffsetSizeAndStrideOpInterface>(op)` 获得
+也属于 `ViewLikeOpInterface` ，可以通过 `llvm::cast<OffsetSizeAndStrideOpInterface>(op)` 获得。
+
+主要用来获取 offeset/size/stride 信息，常用以下方法：
 
 - mlir::OperandRange getOffsets() / getSizes() / getStrides()
 

@@ -972,183 +972,184 @@ size_t mlir::moveLoopInvariantCode(LoopLikeOpInterface loopLike) {
 
 
 ### Array / Vector / Set / hash
-- llvm:ArrayRef
-    - **轻量级数组引用，不进行内存分配或拷贝，适用于对已有数组进行访问而不修改的场景，是一个只读工具**
-    - 常传入SmallVector或std::vector构造
-    - tips: `const &SmallVector` <==> `ArrayRef`
 
-- llvm:SmallVector
-    - SmallVector<int64_t> srcDims(2, 1) 表示 初始化了两个元素，每个元素的值都是 `1`。
-    - `SmallVector<int64_t, 2>` 表示包含 `int64_t` 元素的 `SmallVector` 类型，其中 `2` 是指定的初始大小
-    - **tips:如果能预先知道需要的size，就使用reserve先分配**
-    - 其他
-        ```cpp
-        llvm::reverse()
-        llvm::to_vector()
-        // SmallVector<int64_t> res{llvm::to_vector(llvm::seq((int64_t)0, size))};
-        llvm::make_filter_range()
-        llvm::map_range()
-        ```
+1.llvm:ArrayRef
+- **轻量级数组引用，不进行内存分配或拷贝，适用于对已有数组进行访问而不修改的场景，是一个只读工具**
+- 常传入SmallVector或std::vector构造
+- tips: `const &SmallVector` <==> `ArrayRef`
 
-- llvm::SmallVectorImpl
-    - SmallVector构造时调用的是 `SmallVector() : SmallVectorImpl<T>(N) {}`
-    - 写一个以SmallVector为参数的函数，如果传入的元素个数是固定的，建议使用`SmallVectorImpl` 作为形参，来避免**对堆栈元素的隐式数量进行硬编码**
-    > `SmallVector` 有一个参数 `N`表示该堆栈开辟了多少空间(元素)，函数上直接使用 `SmallVectorImpl`作形参能减少拷贝。 `SmallVectorImpl<Value> &`
+2.llvm:SmallVector
+- SmallVector<int64_t> srcDims(2, 1) 表示 初始化了两个元素，每个元素的值都是 `1`。
+- `SmallVector<int64_t, 2>` 表示包含 `int64_t` 元素的 `SmallVector` 类型，其中 `2` 是指定的初始大小
+- **tips:如果能预先知道需要的size，就使用reserve先分配**
+- 其他
+  ```cpp
+  llvm::reverse()
+  llvm::to_vector()
+  // SmallVector<int64_t> res{llvm::to_vector(llvm::seq((int64_t)0, size))};
+  llvm::make_filter_range()
+  llvm::map_range()
+  ```
 
-- llvm::SetVector
-    - 即有set的存储行为，又有vector的存储顺序
-    - 常用方法
-        - insert
-        - contains / count
-        - erase
-        - clear
-        - size
-        - empty
+3.llvm::SmallVectorImpl
+- SmallVector构造时调用的是 `SmallVector() : SmallVectorImpl<T>(N) {}`
+- 写一个以SmallVector为参数的函数，如果传入的元素个数是固定的，建议使用`SmallVectorImpl` 作为形参，来避免**对堆栈元素的隐式数量进行硬编码**
+> `SmallVector` 有一个参数 `N`表示该堆栈开辟了多少空间(元素)，函数上直接使用 `SmallVectorImpl`作形参能减少拷贝。 `SmallVectorImpl<Value> &`
 
-- llvm:to_vector
-    - 将数组类型的对象转为SmallVector，常用来解决用ArrayRef构造SmallVector
-    - 用法
-      ```cpp
-      // 构造一个[0, 1, windowTy.getShape()-1]的数组
-      SmallVector<int64_t> dstShape(llvm::to_vector(windowTy.getShape()));
-      ```
-    - 源码
-      ```cpp
-      template <typename R>
-      SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
-        return {std::begin(Range), std::end(Range)};
-      }
+4.llvm::SetVector
+- 即有set的存储行为，又有vector的存储顺序
+- 常用方法
+    - insert
+    - contains / count
+    - erase
+    - clear
+    - size
+    - empty
 
-      template <typename RangeType>
-      // std::remove_const_t 用于移除模板参数类型的const修饰符
-      // std::remove_reference_t 用于移除模板参数类型的引用修饰符
-      // decltype 用于推断表达式的类型
-      // std::declval 用于创建模板类型的临时值
-      using ValueTypeFromRangeType =
-          std::remove_const_t<std::remove_reference_t<decltype(*std::begin(
-              std::declval<RangeType &>()))>>;
-      ```
+5.llvm:to_vector
+- 将数组类型的对象转为SmallVector，常用来解决用ArrayRef构造SmallVector
+- 用法
+  ```cpp
+  // 构造一个[0, 1, windowTy.getShape()-1]的数组
+  SmallVector<int64_t> dstShape(llvm::to_vector(windowTy.getShape()));
+  ```
+- 源码
+  ```cpp
+  template <typename R>
+  SmallVector<ValueTypeFromRangeType<R>> to_vector(R &&Range) {
+    return {std::begin(Range), std::end(Range)};
+  }
 
-- llvm::seq
-    - 生成一个连续的序列，包含起始值，不包含结束值。 `seq_inclusive` 既包含起始值，也包含结束值。
-    - 用法
-        - 循环的范围 `for (auto idx : llvm::seq<int>(0, rank))`
-        - 创建个连续的`SmallVector<int64_t> res{llvm::to_vector(llvm::seq((int64_t)0, size))};`
-    - 源码
-      ```cpp
-      auto seq(T Begin, T End) {
-        return iota_range<T>(Begin, End, false);
-      }
-      auto seq(T Size) {
-        return seq<T>(0, Size);
-      }
-      ```
+  template <typename RangeType>
+  // std::remove_const_t 用于移除模板参数类型的const修饰符
+  // std::remove_reference_t 用于移除模板参数类型的引用修饰符
+  // decltype 用于推断表达式的类型
+  // std::declval 用于创建模板类型的临时值
+  using ValueTypeFromRangeType =
+      std::remove_const_t<std::remove_reference_t<decltype(*std::begin(
+          std::declval<RangeType &>()))>>;
+  ```
 
-- llvm:DenseSet
-    - set和map都是基于hash的，都是无序的
-    - 常用方法
-      - insert(const ValueT &V)
-        ```cpp
-          // insert是有返回值
-          std::pair<iterator, bool> insert(const ValueT &V)
-          - first: 插入后的iterator
-          - bool: 是否插入
-        ```
-      - erase(Iterator I)
-      - count(const ValueT &V)
-      - contains(const_arg_type_t<ValueT> V)
-      > `using const_arg_type_t = typename const_pointer_or_const_ref<T>::type;`
+6.llvm::seq
+- 生成一个连续的序列，包含起始值，不包含结束值。 `seq_inclusive` 既包含起始值，也包含结束值。
+- 用法
+    - 循环的范围 `for (auto idx : llvm::seq<int>(0, rank))`
+    - 创建个连续的`SmallVector<int64_t> res{llvm::to_vector(llvm::seq((int64_t)0, size))};`
+- 源码
+  ```cpp
+  auto seq(T Begin, T End) {
+    return iota_range<T>(Begin, End, false);
+  }
+  auto seq(T Size) {
+    return seq<T>(0, Size);
+  }
+  ```
+
+7.llvm:DenseSet
+- set和map都是基于hash的，都是无序的
+- 常用方法
+  - insert(const ValueT &V)
+    ```cpp
+      // insert是有返回值
+      std::pair<iterator, bool> insert(const ValueT &V)
+      - first: 插入后的iterator
+      - bool: 是否插入
+    ```
+  - erase(Iterator I)
+  - count(const ValueT &V)
+  - contains(const_arg_type_t<ValueT> V)
+  > `using const_arg_type_t = typename const_pointer_or_const_ref<T>::type;`
 
 
-- llvm:DenseMap
-    - 和std::map类似， <key, value>
-    - find(返回iterator) / lookup(返回value或null)
-    - contains(返回true/false) / count(返回1/0)
-    - std::pair<iterator, bool> insert / try_emplace : 返回值的second为true时，表示原本的map中不能找到key，已新插入一个<key, val>的pair，并以该pair的iterator作为返回值的first
-        ```cpp
-        launchInfo.insert({candidateOp, replacementIndexes})
-        ```
+8.llvm:DenseMap
+- 和std::map类似， <key, value>
+- find(返回iterator) / lookup(返回value或null)
+- contains(返回true/false) / count(返回1/0)
+- std::pair<iterator, bool> insert / try_emplace : 返回值的second为true时，表示原本的map中不能找到key，已新插入一个<key, val>的pair，并以该pair的iterator作为返回值的first
+  ```cpp
+  launchInfo.insert({candidateOp, replacementIndexes})
+  ```
 
-- llvm::DenseMapInfo
-    - hash表，只存key，`DenseMapInfo<T*>`
-    - 使用 `getHashValue` 来获得hash值，最原始的方法是使用指针地址偏移计算的。但如果要实现自定义的hash，可以继承该类并重载 `getHashValue` 和 `isEqual` 方法
-    - 例如：CSE中确定Op是否相同的代码
-      ```cpp
-      // mlir/lib/Transform/CSE.cpp
-      struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
-        static unsigned getHashValue(const Operation *opC) {
-          return OperationEquivalence::computeHash(
-              const_cast<Operation *>(opC),
-              /*hashOperands*/OperationEquivalence::directHaseValue,
-              /*hashResults*/OperationEquivalence::ignoreHaseValue,
-              OperationEquivalence::IngoreLocations);
-        }
-      }
-      static bool isEqual(const Operation *lhsC, const Operation *rhsC) {
-        auto *lhs = const_cast<Operation *>(lhsC);
-        auto *rhs = const_cast<Operation *>(rhsC);
-        if (lhs == rhs)
-          return true;
-        // 防止lsh/rhs是hash表中的特异值
-        if (lhs == getTombstoneKey() || lhs == getEmptyKey()
-            || rhs == getTombstoneKey() || rhs == getEmptyKey())
-          return false;
-        return OperationEquivalence::isEquivalentTo(
-            const_cast<Operation>(lhsC), const_cast<Operation>(rhsC),
-            OperationEquivalence::IngoreLocations);
-      }
-      ```
+9.llvm::DenseMapInfo
+- hash表，只存key，`DenseMapInfo<T*>`
+- 使用 `getHashValue` 来获得hash值，最原始的方法是使用指针地址偏移计算的。但如果要实现自定义的hash，可以继承该类并重载 `getHashValue` 和 `isEqual` 方法
+- 例如：CSE中确定Op是否相同的代码
+  ```cpp
+  // mlir/lib/Transform/CSE.cpp
+  struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
+    static unsigned getHashValue(const Operation *opC) {
+      return OperationEquivalence::computeHash(
+          const_cast<Operation *>(opC),
+          /*hashOperands*/OperationEquivalence::directHaseValue,
+          /*hashResults*/OperationEquivalence::ignoreHaseValue,
+          OperationEquivalence::IngoreLocations);
+    }
+  }
+  static bool isEqual(const Operation *lhsC, const Operation *rhsC) {
+    auto *lhs = const_cast<Operation *>(lhsC);
+    auto *rhs = const_cast<Operation *>(rhsC);
+    if (lhs == rhs)
+      return true;
+    // 防止lsh/rhs是hash表中的特异值
+    if (lhs == getTombstoneKey() || lhs == getEmptyKey()
+        || rhs == getTombstoneKey() || rhs == getEmptyKey())
+      return false;
+    return OperationEquivalence::isEquivalentTo(
+        const_cast<Operation>(lhsC), const_cast<Operation>(rhsC),
+        OperationEquivalence::IngoreLocations);
+  }
+  ```
 
-- llvm::ScopedHashTable
-    - 需要包含 key, value, keyInfo, AllocatorTy 四个参数，例如 CSE.cpp 中构造该类型:
-      ```cpp
-      using ScopedMapTy = llvm::ScopedHashTable<Operation *, Operation *,
-          SimpleOperationInfo, AllocatorTy>
-      // SimpleOperationInfo 继承自 DenseMapInfo<Operation *>
-      // using AllocatorTy = llvm::RecyclingAllocator<llvm::BumpPtrAllocator, llvm::ScopedHashTableVal<Operation *, Operation *>>;
-      ```
-    - 实例化 `using ScopeTy = ScopedHashTableScope<K, V, KInfo, AllocatorTy>;`
-      ```cpp
-      ScopedMapTy::ScopeTy scope(knownValues);
-      ```
-    - 使用函数
-      - V lookup(K key) : 在其中尝试查找key。一般来说 `SimpleOperationInfo` 都会有有自己的 `getHashValue` 和 `isEqual` 函数，这样就能根据key找到对应的value
+10.llvm::ScopedHashTable
+- 需要包含 key, value, keyInfo, AllocatorTy 四个参数，例如 CSE.cpp 中构造该类型:
+  ```cpp
+  using ScopedMapTy = llvm::ScopedHashTable<Operation *, Operation *,
+      SimpleOperationInfo, AllocatorTy>
+  // SimpleOperationInfo 继承自 DenseMapInfo<Operation *>
+  // using AllocatorTy = llvm::RecyclingAllocator<llvm::BumpPtrAllocator, llvm::ScopedHashTableVal<Operation *, Operation *>>;
+  ```
+- 实例化 `using ScopeTy = ScopedHashTableScope<K, V, KInfo, AllocatorTy>;`
+  ```cpp
+  ScopedMapTy::ScopeTy scope(knownValues);
+  ```
+- 使用函数
+  - V lookup(K key) : 在其中尝试查找key。一般来说 `SimpleOperationInfo` 都会有有自己的 `getHashValue` 和 `isEqual` 函数，这样就能根据key找到对应的value
 
 
 ### make_range
 
-- llvm::map_range
-    - 将一个range映射到另一个range
-    - 用法
-      ```cpp
-      // 将 srcDims 中的每个元素都乘以2
-      auto res = llvm::map_range(srcDims, [&](int64_t dim) { return dim * 2; });
+1.llvm::map_range
+- 将一个range映射到另一个range
+- 用法
+  ```cpp
+  // 将 srcDims 中的每个元素都乘以2
+  auto res = llvm::map_range(srcDims, [&](int64_t dim) { return dim * 2; });
 
-      // 判断所有的operand的shape都相同
-      assert(llvm::all_equal(llvm::map_range(op.getOperandTypes(),
-          [](Type t) { return t.cast<TensorType>().getShape(); })));
-      ```
-    - 源码
-      ```cpp
-      template <typename ContainerTy, class FuncTy>
-      auto map_range(ContainerTy &&C, FuncTy F) {
-        return make_range(map_iterator(std::begin(C), F),
-                          map_iterator(std::end(C), F));
-      }
+  // 判断所有的operand的shape都相同
+  assert(llvm::all_equal(llvm::map_range(op.getOperandTypes(),
+      [](Type t) { return t.cast<TensorType>().getShape(); })));
+  ```
+- 源码
+  ```cpp
+  template <typename ContainerTy, class FuncTy>
+  auto map_range(ContainerTy &&C, FuncTy F) {
+    return make_range(map_iterator(std::begin(C), F),
+                      map_iterator(std::end(C), F));
+  }
 
-      template <typename ItTy, class FuncTy>
-      inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
-        return mapped_iterator<ItTy, FuncTy>(std::move(I), std::move(F));
-      }
-      ```
+  template <typename ItTy, class FuncTy>
+  inline mapped_iterator<ItTy, FuncTy> map_iterator(ItTy I, FuncTy F) {
+    return mapped_iterator<ItTy, FuncTy>(std::move(I), std::move(F));
+  }
+  ```
 
-- llvm::make_early_inc_range
-    - 允许range中的元素被修改，且不影响iterator。例如遍历DenseMap对符合条件的iterator进行erase
-    ```
-      for (Block *block : llvm::make_early_inc_range(blockVec)) {
-        ... // earse/replace ops in block
-      }
-    ```
+2.llvm::make_early_inc_range
+- 允许range中的元素被修改，且不影响iterator。例如遍历DenseMap对符合条件的iterator进行erase
+```
+  for (Block *block : llvm::make_early_inc_range(blockVec)) {
+    ... // earse/replace ops in block
+  }
+```
 
 ### find
 
@@ -1171,89 +1172,89 @@ tip: 如果需要在循环中查找，建议使用 `DenseSet`, `DenseMap` 类数
 ### switch
 
 - llvm:TypeSwitch
-    - 常用在模板输入的pattern中，某些op需要额外的处理，例如构建某些op的时候需要额外set一些属性
-      ```cpp
-      auto newOp = clone(rewriter, op, TypeRange{newResType}, newOperands);
-      auto inWhiteList = llvm::TypeSwitch<Operation *, bool>(newOp)
-          .Case([&](linalg::BroadcastOp updateOp) {
-            auto srcOp = cast<linalg::BroadcastOp>(op);
-            updateOp.setDimensions...
-            return true;
-          })
-          .Case([&](linalg::ReduceOp updateOp) {
-            auto srcOp = cast<linalg::ReduceOp>(op);
-            updateOp.setDimensions...
-            return true;
-          })
-          .Case([&](linalg::TransposeOp updateOp) {
-            auto srcOp = cast<linalg::TransposeOp>(op);
-            updateOp.setPermutation...
-            return true;
-          })
-          .Default([&](Operation *noNeedUpdate) { return false; });
-      ```
+
+常用在模板输入的pattern中，某些op需要额外的处理，例如构建某些op的时候需要额外set一些属性
+```cpp
+auto newOp = clone(rewriter, op, TypeRange{newResType}, newOperands);
+auto inWhiteList = llvm::TypeSwitch<Operation *, bool>(newOp)
+    .Case([&](linalg::BroadcastOp updateOp) {
+      auto srcOp = cast<linalg::BroadcastOp>(op);
+      updateOp.setDimensions...
+      return true;
+    })
+    .Case([&](linalg::ReduceOp updateOp) {
+      auto srcOp = cast<linalg::ReduceOp>(op);
+      updateOp.setDimensions...
+      return true;
+    })
+    .Case([&](linalg::TransposeOp updateOp) {
+      auto srcOp = cast<linalg::TransposeOp>(op);
+      updateOp.setPermutation...
+      return true;
+    })
+    .Default([&](Operation *noNeedUpdate) { return false; });
+```
 
 
 ### STL_Extra func
 
-- llvm::count_if
-    - 用法
-      ```cpp
-      llvm::count_if(inputs.getType(), [](Type type) {
-        return type.isa<ShapedType>();
-      });
+1.llvm::count_if
+- 用法
+  ```cpp
+  llvm::count_if(inputs.getType(), [](Type type) {
+    return type.isa<ShapedType>();
+  });
 
-      int64_t = numUsesInContainingOp = llvm::count_if(producerOp->getUsers(), [&](Operation *op) {
-        return containingOp->isAncestor(op);
-      });
-      ```
-    - 实现
-      ```cpp
-      template <typename R, typename UnaryPredicate>
-      auto count_if(R &&Range, UnaryPredicate P) {
-        return std::count_if(adl_begin(Range), adl_end(Range), P);
-      }
-      ```
+  int64_t = numUsesInContainingOp = llvm::count_if(producerOp->getUsers(), [&](Operation *op) {
+    return containingOp->isAncestor(op);
+  });
+  ```
+- 实现
+  ```cpp
+  template <typename R, typename UnaryPredicate>
+  auto count_if(R &&Range, UnaryPredicate P) {
+    return std::count_if(adl_begin(Range), adl_end(Range), P);
+  }
+  ```
 
-- llvm::transform
-    - 使用
-      ```cpp
-      llvm::transform(srcDims, std::back_inserter(resDims)
-      [&](int64_t dim) { return dim * 2; });
-      ```
+2.llvm::transform
+- 对一个range应用特殊的方法
+- 使用
+  ```cpp
+  llvm::transform(srcDims, std::back_inserter(resDims)
+  [&](int64_t dim) { return dim * 2; });
+  ```
 
-- llvm::hasSingleElement
+3.llvm::hasSingleElement
+- 使用
+  ```cpp
+    auto containingOps = state.getPayloadOps(getContainingOp());
+    if (!llvm::hasSingleElement(containingOps)) {
+      return emitDefiniteFailure()
+             << "requires exactly one containing_op handle (got "
+             << llvm::range_size(containingOps) << ")";
+    }
+    Operation *containingOp = *containingOps.begin();
+  ```
+- 实现
+  ```cpp
+  template <typename ContainerTy>
+  bool hasSingleElement(ContainerTy &&C) {
+    auto B = std::begin(C), E = std::end(C);
+    return B != E && std::next(B) == E;
+  }
+  ```
 
-    - 使用
-        ```cpp
-          auto containingOps = state.getPayloadOps(getContainingOp());
-          if (!llvm::hasSingleElement(containingOps)) {
-            return emitDefiniteFailure()
-                   << "requires exactly one containing_op handle (got "
-                   << llvm::range_size(containingOps) << ")";
-          }
-          Operation *containingOp = *containingOps.begin();
-        ```
-
-    - 实现
-        ```cpp
-        template <typename ContainerTy>
-        bool hasSingleElement(ContainerTy &&C) {
-          auto B = std::begin(C), E = std::end(C);
-          return B != E && std::next(B) == E;
-        }
-        ```
-
-- drop_begin / drop_end
-	```cpp
-	template <typename T>
-	auto drop_begin(T &&RangeOrContainer, size_t N = 1) {
-	  make_range(std::next(adl_begin(RangeOrContainer), N), adl_end(RangeOrContainer));
-	}
-	auto drop_begin(T &&RangeOrContainer, size_t N = 1) {
-	  make_range(adl_begin(RangeOrContainer), adl_prev(adl_end(RangeOrContainer), N));
-	}
-	```
+4.drop_begin / drop_end
+```cpp
+template <typename T>
+auto drop_begin(T &&RangeOrContainer, size_t N = 1) {
+  make_range(std::next(adl_begin(RangeOrContainer), N), adl_end(RangeOrContainer));
+}
+auto drop_begin(T &&RangeOrContainer, size_t N = 1) {
+  make_range(adl_begin(RangeOrContainer), adl_prev(adl_end(RangeOrContainer), N));
+}
+```
 
 ### setOperation
 ```cpp
@@ -2142,7 +2143,7 @@ std::optional<Attribute> getExecutorAttr(Operation *op) {
             executor = gpu;
             return true;
           }
-          .Case<gpu::LaunchOp, gpu::AllocOp> ([&](auto oriOp) {
+          .Case<gpu::WrapOp, gpu::AllocOp> ([&](auto oriOp) {
             executor = cpu;
             return true;
           }
@@ -2493,7 +2494,8 @@ mlir/include/mlir/IR/OpDefinition.h
 
 用 `mightHaveTrait` 、 `hasTrait` 来判断
 
-- SameTypeOperands : 所有operand type相同
+1.SameTypeOperands : 所有operand type相同
+
 ```cpp
 class Arith_CompareOp<string mnemonic, list<Trait> traits = []> :
     Arith_Op<mnemonic, traits # [Pure, SameTypeOperands, TypesMatchWith<
@@ -2505,7 +2507,8 @@ class Arith_CompareOp<string mnemonic, list<Trait> traits = []> :
 }
 ```
 
-- SameOperandsAndResultType：操作数和返回值有相同的类型，使用后 assemblyFormat 里就只需要写任何某一个操作数的类型
+2.SameOperandsAndResultType：操作数和返回值有相同的类型，使用后 assemblyFormat 里就只需要写任何某一个操作数的类型
+
 ```cpp
 class Math_IntegerBinaryOp<string mnemonic, list<Trait> traits = []> :
     Math_Op<mnemonic, traits # [SameOperandsAndResultType]> {
@@ -2516,11 +2519,12 @@ class Math_IntegerBinaryOp<string mnemonic, list<Trait> traits = []> :
 }
 ```
 
-- InferTypeOpInterface ：通过输入和 attr 的类型推断返回值类型，自己写推断函数
+3.InferTypeOpInterface ：通过输入和 attr 的类型推断返回值类型，自己写推断函数
 
-- InferTypeOpAdaptor ：与上一个相似，但封装了一个 Adaptor，写起来会更简单
+4.InferTypeOpAdaptor ：与上一个相似，但封装了一个 Adaptor，写起来会更简单
 
-- ConstantLike : 代表该op是个constant op
+5.ConstantLike : 代表该op是个constant op
+
 ```cpp
 def LLVM_ConstantOp
     : LLVM_Op<"mlir.constant", [Pure, ConstantLike]>,
@@ -2531,7 +2535,7 @@ def LLVM_ConstantOp
   ...
 ```
 
-- IsTerminator : 表示该op是一个block的最后一个操作(terminator operations)
+6.IsTerminator : 表示该op是一个block的最后一个操作(terminator operations)
 
 一般pass处理op时都要避免处理带有该 trait 的op
 
@@ -2566,8 +2570,6 @@ payload IR: transfromations apply的对象
 
 transform IR 应用在 payload IR(operations) 对应的 values 上，这些value又称为 handle。这些tansform IR也能应用在 Attribute 上，例如对module内的op进行排序，以 op-indexing 来作为handle。
 
-#### apply方法
-
 transform op在应用时，一般调用 apply方法，该方法需要传入三个元素
 
 ```cpp
@@ -2577,7 +2579,7 @@ transform::FuseIntoContainingOp::apply(transform::TransformRewriter &rewriter,
                                        transform::TransformState &state) {
 ```
 
-- `transform::TransformRewriter`
+1.`transform::TransformRewriter`
 
 ```cpp
 class TransformRewriter : public RewriterBase {
@@ -2589,7 +2591,7 @@ public:
                                                Operation *replacement);
 ```
 
-- `transform::TransformResults`
+2.`transform::TransformResults`
 
 ```cpp
 class TransformResults {
@@ -2600,35 +2602,30 @@ public:
 
 常用 `RaggedArray` 数据结构， `RaggedArray` 表示2D数组，每行元素连续，每列元素并不固定
 
-- `transform::TransformState`
+3.`transform::TransformState`
 
-    - Operation *getTopLevel :  topLevel包含all payload IR，一般来说是一个moduleOp。当transform ir应用在全局使用
+- Operation *getTopLevel :  topLevel包含all payload IR，一般来说是一个moduleOp。当transform ir应用在全局使用
 
-    - getPayloadOps : 返回给定operand的对应payloadOps。当transform ir应用在特定的handle使用
-      - 定义
-      ```cpp
-      auto getPayloadOps(Value value) const {
-          ArrayRef<Operation *> view = getPayloadOpsView(value);
-      ```
-      - 使用
-      ```cpp
-      auto targetOps = state.getPayloadOps(getTarget())
-      auto producerOps = state.getPayloadOps(getProducerOp());
-      auto containingOps = state.getPayloadOps(getContainingOp());
-      ```
+- getPayloadOps : 返回给定operand的对应payloadOps。当transform ir应用在特定的handle使用
+  - 定义
+    ```cpp
+    auto getPayloadOps(Value value) const {
+        ArrayRef<Operation *> view = getPayloadOpsView(value);
+    ```
+  - 使用
+    ```cpp
+    auto targetOps = state.getPayloadOps(getTarget())
+    auto producerOps = state.getPayloadOps(getProducerOp());
+    auto containingOps = state.getPayloadOps(getContainingOp());
+    ```
 
-    - `ArrayRef<Attribute> getParams(Value value)` : 返回传入transform ir中，给定operand对应的参数(都是以Attribute的形式传入的，例如tile_size)
-
-        ```cpp
-          auto tileSizeIntAttr = tileSizeAttr.dyn_cast_or_null<IntegerAttr>();
-          if (!tileSizeIntAttr)
-            return failure();
-          auto tileSize = tileSizeIntAttr.getInt();
-        ```
-
-- getHandlesForPayloadOp
-
--  getHandlesForPayloadValue 传入的value是op的opResult
+- `ArrayRef<Attribute> getParams(Value value)` : 返回传入transform ir中，给定operand对应的参数(都是以Attribute的形式传入的，例如tile_size)
+  ```cpp
+    auto tileSizeIntAttr = tileSizeAttr.dyn_cast_or_null<IntegerAttr>();
+    if (!tileSizeIntAttr)
+      return failure();
+    auto tileSize = tileSizeIntAttr.getInt();
+  ```
 
 ### linalg transformOp
 
@@ -2667,42 +2664,42 @@ Value 必然包含 Type，Type 也可以作为 Attribute 附加在 Operation 上
 
 ### 常见类型
 
-- ShapedType
-    - ShapedType::kDynamic 用于判断某个数不是 `?`
-    - isDynamicDim(i)
-    - 当Type满足 `!llvm::isa<BaseMemRefType, TensorType>(type)` 时，认为该type是个scalar
+1.ShapedType
+- ShapedType::kDynamic 用于判断某个数不是 `?`
+- isDynamicDim(i)
+- 当Type满足 `!llvm::isa<BaseMemRefType, TensorType>(type)` 时，认为该type是个scalar
 
-- TensorType
-  - kind: RankedTensorType / UnrankedTensorType
-  - function:
-    - hasRank() -> bool
-    - getShape() -> ArrayRef<int64_t>
-    - getElementType() -> Type
-    - getElementTypeBitWidth()
-    - clone(ArrayRef<int64_t> shape, Ttpe elemType) -> RankedTensorType
+2.TensorType
+- kind: RankedTensorType / UnrankedTensorType
+- function:
+  - hasRank() -> bool
+  - getShape() -> ArrayRef<int64_t>
+  - getElementType() -> Type
+  - getElementTypeBitWidth()
+  - clone(ArrayRef<int64_t> shape, Ttpe elemType) -> RankedTensorType
 
-- BaseMemRefType
-  - kind: MemRefType / UnrankedMemRefType
-  - function: 大部分和 TensorType 相同，继承自 ShapedType的
-    - clone(ArrayRef<int64_t> shape, Ttpe elemType) -> MemRefType
-    - getMemorySpace() -> Attribute
-    - getMemorySpaceAsInt -> unsigned
+3.BaseMemRefType
+- kind: MemRefType / UnrankedMemRefType
+- function: 大部分和 TensorType 相同，继承自 ShapedType的
+  - clone(ArrayRef<int64_t> shape, Ttpe elemType) -> MemRefType
+  - getMemorySpace() -> Attribute
+  - getMemorySpaceAsInt -> unsigned
 
-- MemRefType
-    - getLayout() -> MemRefLayoutAttrInterface
-      - isIdentity() : result type has no offset.
-    - 获得dim
-      ```cpp
-          SmallVector<Value, 4> dynamicOperands;
-          for (int i = 0; i < memrefType.getRank(); ++i) {
-            if (!memrefType.isDynamicDim(i))
-              continue;
-            Value dim = rewriter.createOrFold<memref::DimOp>(loc, op.getInput(), i);
-            dynamicOperands.push_back(dim);
-          }
-      ```
-    - getStridesAndOffset(MemRefType t, SmallVectorImpl<int64_t> **&**strides, int64_t **&**offset)
-    - canonicalizeStridedLayout(MemRefType t) -> MemRefType : 标准化t的layout格式，如果能canonicalize成静态的就没问题，否则返回MemRefType的layout将是affineMap的形式
+3.MemRefType
+- getLayout() -> MemRefLayoutAttrInterface
+  - isIdentity() : result type has no offset.
+- 获得dim
+  ```cpp
+      SmallVector<Value, 4> dynamicOperands;
+      for (int i = 0; i < memrefType.getRank(); ++i) {
+        if (!memrefType.isDynamicDim(i))
+          continue;
+        Value dim = rewriter.createOrFold<memref::DimOp>(loc, op.getInput(), i);
+        dynamicOperands.push_back(dim);
+      }
+  ```
+- getStridesAndOffset(MemRefType t, SmallVectorImpl<int64_t> **&**strides, int64_t **&**offset)
+- canonicalizeStridedLayout(MemRefType t) -> MemRefType : 标准化t的layout格式，如果能canonicalize成静态的就没问题，否则返回MemRefType的layout将是affineMap的形式
 
 例： bufferize时创建memref
 
@@ -2828,9 +2825,8 @@ WalkResult ret = a.walk([&](Ty opOfTy) -> WalkResult {
 
 ## clang code style
 
-mlir的代码一般都得准守clang的format，简单的话可以使用 `git-clang-format` 工具
+mlir的代码一般都得准守clang的format，简单的话可以使用 `clang-format` 工具
 
-当然也有相关的脚本，可以参考iree 的 [build_tools/scripts/lint.sh](https://github.com/iree-org/iree/blob/main/build_tools/scripts/lint.sh) 去魔改
 
 - 设置代码界限标识
 
@@ -2858,8 +2854,6 @@ mlir的代码一般都得准守clang的format，简单的话可以使用 `git-cl
       AffineVectorStoreLowering>(patterns.getContext());
   // clang-format on
 ```
-
-
 
 ---
 
@@ -2949,8 +2943,6 @@ for(int64_t i = 0, index = 0; i < static_cast<int_64>(a.size()); ++i) {
 SmallVector<Operation *, 4>
 ```
 
-
-
 ### 常用code
 
 #### 重排序  `applyPermutationToVector`
@@ -3011,46 +3003,6 @@ llvm::find_if(shapeIndexs, [&](int64_t shapeIndex) {
 			rewriter.create<tensor::EmptyOp>(loc, newShapes, srcType.getElementType());
 ```
 
-#### 两维计算展开高维为循环
-compute(memref<axbxf32>) -> for a { compute(memref<1xbxf32>) }
-
-获得memref的offset 、size、stide的方法间 [offset-size-stride](#offset--stride--size) 节
-
-
-下面以第一种方法获得的offset、size、stride为例，来处理
-
-```cpp
-// 创建for循环
-Value lowBound = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-Value upperBound = rewriter.create<memref::DimOp>(loc, src, 0);
-Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-scf::ForOp outerLoop = rewriter.create<scf::ForOp>(loc, lowBound, upperBound, one);
-// 创建内部计算
-Block *block = outerLoop.getBody();
-rewriter.setInsertionPointToStart(body);
-Value iter = body->getArgument(0);
-// dst
-auto createViewVal = [&](Value target) {
-  // 不能支持dynamic stride
-  Value innermostStride = rewriter.create<xxx::StrideOp>(loc, target, 0);
-  Value strideIter = rewriter.create<arith::MulIOp>(loc, iter, innermostStride);
-  Value offset = rewrite.create<xxx::OffsetOp>(loc, target);
-  Value finalOffset = rewriter.create<arith::AddIOp>(loc, offset, strideIter);
-  Value leftDim = rewriter.create<memref::DimOp>(loc, src, 1);
-  return rewriter.create<xxx::MemrefCastOp>(
-      loc, target, getElementTypeOrSelf(target.getType()),
-      /*offset*/finalOffset,
-      /*size*/ValueRange({one, leftDim}),
-      /*stride*/ValueRange({one}));
-}
-for (Value operand : op.getOperands()) {
-  Value newOperand = createViewVal(operand);
-  newOperands.push_back(newOperand);
-}
-auto newOp = clone(rewriter, op, TypeRange{newResType}, newOperands);
-rewriter.replaceOp(op, newOp->getResults());
-```
-
 #### 判断输入是否为升序
 
 ```cpp
@@ -3088,7 +3040,7 @@ auto getNewOrder = [](const SmallVector<int64_t> &relativeOrder)
 
 #### 定义一个driver来递归地处理func中符合条件的op
 
-例：收集一起launch(或其他special)的op
+例：收集一起wrap(或其他special)的op
 
 ```cpp
 namespace {
@@ -3098,7 +3050,7 @@ public:
 private:
   /// The map between candidateOp and its result indexes that returned from
   /// scf.forall.
-  llvm::DenseMap<Operation*, llvm::DenseSet<unsigned>> opsLaunchInfo;
+  llvm::DenseMap<Operation*, llvm::DenseSet<unsigned>> opsWrapInfo;
 
   /// Operations can be wrapped using one loop.
   llvm::SmallVector<Operation *> opsToWrapTogather;
@@ -3109,11 +3061,11 @@ private:
   /// The result number of scf.forall.
   unsigned replacementCount;
 
-  bool checkOpIfNeedLaunch(Operation* op);
+  bool checkOpIfNeedWrap(Operation* op);
 
   LogicalResult processOnOp(Operation* op);
 
-  void createWrapToLaunch();
+  void createWrapToWrap();
 };
 
 } // namespace
@@ -3122,7 +3074,7 @@ private:
 // Check if the op is a candidate.
 //===----------------------------------------------------------------------===//
 
-bool WrapDriver::checkOpIfNeedLaunch(Operation* op) {
+bool WrapDriver::checkOpIfNeedWrap(Operation* op) {
   // Check if the op is a candidate to be wrapped.
   // 1. op needs to be a top level op.
   op.getParentOp() == rootOp(func::FuncOp)
@@ -3140,7 +3092,7 @@ bool WrapDriver::checkOpIfNeedLaunch(Operation* op) {
 //===----------------------------------------------------------------------===//
 
 /// Use opsToWrapTogather and replacementCount to create a loop to wrap ops.
-void WrapDriver::createWrapToLaunch() {
+void WrapDriver::createWrapToWrap() {
   // ...
 }
 
@@ -3154,7 +3106,7 @@ void WrapDriver::processOnOp(Operation* op) {
 
   for (auto operand : op->getOperands()) {
     if (auto *operandOp = operand.getDefiningOp()) {
-      if (checkOpIfNeedLaunch(operandOp)) {
+      if (checkOpIfNeedWrap(operandOp)) {
         if (failed(processOnOp(operandOp))) {
           visited.earse(op);
           return failure();
@@ -3170,19 +3122,19 @@ void WrapDriver::processOnOp(Operation* op) {
     }
   }
 
-  opsLaunchInfo.try_emplace(op);
+  opsWrapInfo.try_emplace(op);
   opsToWrapTogather.push_back(op);
 
   llvm::DenseSet<unsigned> replacementIndexes;
   for (const auto &[idx, resVal] : llvm::enumerate(op->getResults())) {
     for (auto *candidateOp : resVal.getUsers()) {
-      if (!checkOpIfNeedLaunch(candidateOp) ||
+      if (!checkOpIfNeedWrap(candidateOp) ||
           failed(processOnOp(candidateOp))) {
         replacementIndexes.insert(idx);
       }
     }
   }
-  opsLaunchInfo[op] = replacementIndexes;
+  opsWrapInfo[op] = replacementIndexes;
   replacementNum += replacementIndexes.size();
   return success();
 }
@@ -3194,7 +3146,7 @@ void WrapDriver::processOnOp(Operation* op) {
 void WrapDriver::processor(func::FuncOp funcOp) {
   llvm::SmallVector<Operation*> worklist;
   funcOp->walk([&](Operation* workOp){
-    if (checkOpIfNeedLaunch(workOp)) {
+    if (checkOpIfNeedWrap(workOp)) {
      worklist.push_back(workOp);
     }
   });
@@ -3206,7 +3158,7 @@ void WrapDriver::processor(func::FuncOp funcOp) {
     replacementCount = 0;
     if (failed(processOnOp(candidateOp)))
       continue;
-    createWrapToLaunch();
+    createWrapToWrap();
   }
 }
 
