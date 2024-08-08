@@ -139,7 +139,7 @@ FlexFlow的并行策略S包含了每个op的并行策略
 
 <div style="text-align: center;"><img src="img_auto_parallelism/Untitled%204.png" alt="Untitled" style="width: 90%;"></div>
 
-2.simulator algorithm  
+2.simulator algorithm
 
 规划task graph中任务的执行。使用优先队列保存ready（所有依赖task已经完成且到start_time）状态的task，FIFO执行
 
@@ -265,9 +265,9 @@ propagation过程：
 
 - state：每个op都有一维向量，包含该op的全体维度划分情况，有三种值，-1、0、1
   按原文意思，变量每个维度的策略相同，沿着所有设备划分或者复制
-  
+
     <div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-02-24_23.10.38.png" alt="截屏2024-02-24 23.10.38.png" style="width: 90%;"></div>
-  
+
 - action：true代表沿着所有设备partition，false代表沿着所有设备replicate
 - reward：partition比replicate有更高的奖励，但是违反设置的推导规则的partition行为将被惩罚
 
@@ -373,13 +373,13 @@ Alpa: Automating Inter- and Intra-Operator Parallelism for Distributed Deep Lear
 Alpa将并行策略分为
 
 1. Intra-Operator Parallelism：将tensor按某些维度（一般有batch、channel、height、width）切分，放到不同device上计算
-   
+
     <div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_11.35.50.png" alt="截屏2024-01-01 11.35.50.png" style="width: 90%;"></div>
-    
+
 2. Inter-Operator Parallelism：将计算图切分为多个计算stage，放在不同的device-mesh上计算
-   
+
     <div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-01_11.36.20.png" alt="截屏2024-01-01 11.36.20.png" style="width: 90%;"></div>
-    
+
 
 为什么分为这两种并行：
 
@@ -571,9 +571,9 @@ $T^* = \min\limits_{\{(s_0, Mesh(n_0, m_0)),\dots,(s_S, Mesh(n_S, m_S)\}} \{\sum
 
 - 必要时插入集体通信原语来解决intra-op pass引起的mesh内部通信
 - cross-mesh resharding：优化通信，从p2p到all-gather
-  
+
     <div style="text-align: center;"><img src="img_auto_parallelism/%25E6%2588%25AA%25E5%25B1%258F2024-01-04_19.27.19.png" alt="截屏2024-01-04 19.27.19.png" style="width: 90%;"></div>
-    
+
 
 整体架构
 
@@ -653,9 +653,9 @@ cone（op的tensor的切分）→segment（cone的切分）→graph（segment的
     - 对每个segment都决定切分策略：枚举关键点的切分策略，将cone作为基础块，最小化通信开销，使用ILP solver来获得该segment的切分策略（关键点也就是某个cone的root，不是在上一步就决定好它的拆分了吗，这里需要决定的拆分是怎样的？）
 - all graph
     - 现在graph由近似线性拓扑的segment组成，天然适合DP来解决，以获得全图通信开销最小
-    
+
     <div style="text-align: center;"><img src="img_auto_parallelism/Untitled%2019.png" alt="Untitled" style="width: 90%;"></div>
-    
+
 
 ## Pipeline strategy
 

@@ -500,14 +500,44 @@ class LayerNorm(torch.autograd.Function):
 
 ### 替换算子
 
-简单的算子替换:
+#### 简单的算子替换
 
 - `tl.max(a, 0.0)` 可以换成 `tl.where(a > 0, a, 0.0)`
 - `x` 和 `y` 在 `tl.load` 时用了mask，随后的 `tl.where(mask, x - y, 0.0)` 可以删除
 - 大规模 `reduce(10000->1)` -> 多级 `reduce(10000->100->1)`
 - ...
 
-算法替换：
+#### 人为hint
+
+```python
+offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
+offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
+```
+
+由于编译器无法感知数据的连续性，所以加载数据时会**离散地**处理数据。
+如果编写kernel时提前已知数据连续，可以使用 `tl.max_contiguous & tl.multiple_of` 去标识加载数据的连续性，这样编译器就可连续地处理该段数据。
+
+input 和 values 是等维度的
+
+- max_contiguous(input, values)：对于每个维度i，标识input[i]中 每values[i]个相邻元素 是连续的
+
+> 例如 values = [4], 则 input 可以是 [0, 1, 2, 3, 8, 9, 10, 11]
+
+- max_constany(input, values)：对于每个维度i，标识input[i]中 每values[i]个相邻元素 是常数
+
+> 例如 values = [4], 则 input 可以是 [0, 0, 0, 0, 1, 1, 1, 1]
+
+- multiple_of(input, values)：对于每个维度i，标识input[i]中 所有元素都是 values[i] 的倍数
+
+> 例如 values = [2], 则 input 可以是 [0, 2, 4, 6, 8]
+
+```python
+offs_am = tl.max_contiguous(tl.multiple_of((pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M, BLOCK_SIZE_M), BLOCK_SIZE_M)
+offs_am = tl.max_contiguous(tl.multiple_of((pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M, BLOCK_SIZE_M), BLOCK_SIZE_M)
+```
+
+
+#### 算法替换
 
 例如：累乘 -> 二分乘法
 
