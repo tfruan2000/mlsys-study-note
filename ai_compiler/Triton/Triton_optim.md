@@ -600,7 +600,7 @@ def prod_kernel_mid(
     for off in range(block_start, M, step):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
-        inp_val = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
+        inp_val = tl.load(inp + offset, mask=mask, other=1.0).to(tl.float32)
         _tmp = _tmp * input_val
     mid_value = tl.reduce(_tmp, axis=0, combine_fn=reduce_mul)
     tl.store(mid_ptr + pid, mid_value.to(inp_val.dtype))
@@ -637,6 +637,46 @@ tl.store(mid_ptr + pid, res)
 ```
 
 需要注意的是，上述并行归约优化在`tl.reduce`下降过程完成更具泛化性。
+
+在拆时间片循环的时候，我们也可以注意到可以根据选择的 `tuning config` 提前判断是否需要循环，可以使用一个超参数来控制
+
+```python
+@triton.autotune(...)
+@triton.heuristics(
+    values={
+        "ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * MAX_GRID_NUM,
+    },
+)
+@triton.jit
+def prod_kernel_mid(
+    inp,
+    mid,
+    M,
+    BLOCK_SIZE: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    mid_value = 0.0
+    if ONE_TIME_PER_CTA:
+        offset = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask=mask, other=1.0).to(tl.float32)
+        mid_value = tl.reduce(inp_val, axis=0, combine_fn=reduce_mul)
+    else:
+        _tmp = tl.full([BLOCK_SIZE], value=1.0, dtype=tl.float32)
+        num_jobs = tl.num_programs(axis=0)
+        step = num_jobs * BLOCK_SIZE
+        for off in range(block_start, M, step):
+            offset = off + tl.arange(0, BLOCK_SIZE)
+            mask = offset < M
+            inp_val = tl.load(inp + offset, mask=mask, other=1.0).to(tl.float32)
+            _tmp = _tmp * input_val
+        mid_value = tl.reduce(_tmp, axis=0, combine_fn=reduce_mul)
+
+    mid_ptr = mid + pid
+    tl.store(mid_ptr + pid, mid_value.to(inp_val.dtype))
+```
 
 ---
 
